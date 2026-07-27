@@ -1,15 +1,42 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { AggregatablePurchase, buildBill, buildBills } from './bill-aggregation';
+import {
+  AggregatablePurchase,
+  billCycleEnd,
+  buildBill,
+  buildBills,
+  inferClosingDay,
+} from './bill-aggregation';
 
 const MARCO = new Date(Date.UTC(2025, 2, 1));
+
+/** O dia em que o bug do recorte aparecia: a fatura de agosto fechou ontem. */
+const HOJE = new Date(Date.UTC(2026, 6, 27));
 
 function purchase(
   amount: number,
   category = 'outros',
   referenceMonth = MARCO,
+  // O consumo de uma fatura vem do mês anterior ao vencimento: o padrão põe a
+  // compra onde ela de fato cairia, perto do fechamento.
+  date = new Date(Date.UTC(referenceMonth.getUTCFullYear(), referenceMonth.getUTCMonth() - 1, 26)),
 ): AggregatablePurchase {
-  return { amount, category, referenceMonth };
+  return { amount, category, referenceMonth, date };
+}
+
+/**
+ * As compras de uma fatura, a última delas caindo no dia `closingDay` do mês
+ * anterior ao vencimento e as outras nos dias imediatamente antes.
+ */
+function billPurchases(month: string, count: number, closingDay: number): AggregatablePurchase[] {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const referenceMonth = new Date(Date.UTC(year, monthNumber - 1, 1));
+  return Array.from({ length: count }, (_, index) => ({
+    amount: 10,
+    category: 'outros',
+    referenceMonth,
+    date: new Date(Date.UTC(year, monthNumber - 2, closingDay - index)),
+  }));
 }
 
 function categoria(bill: ReturnType<typeof buildBill>, name: string) {
@@ -215,5 +242,121 @@ describe('buildBills', () => {
 
   it('devolve vazio sem compras', () => {
     assert.deepEqual(buildBills([]), []);
+  });
+
+  it('dá a cada fatura a borda do próprio ciclo', () => {
+    const bills = buildBills(
+      [
+        ...billPurchases('2026-05', 6, 26),
+        ...billPurchases('2026-06', 6, 26),
+        ...billPurchases('2026-07', 6, 26),
+      ],
+      HOJE,
+    );
+
+    assert.deepEqual(
+      bills.map((b) => b.cycleEnd),
+      ['2026-04-26', '2026-05-26', '2026-06-26'],
+    );
+  });
+
+  // Regressão: a Visão geral filtrava `month <= mês corrente`, então em 27/07/2026
+  // a fatura de agosto caía em "faturas futuras" — mesmo com o ciclo dela, de
+  // 26/06 a 26/07, fechado no dia anterior. Um mês inteiro de consumo (R$ 7.245,24
+  // e 105 compras na base de referência) saía de todos os números da tela.
+  it('fecha o ciclo que terminou, ainda que a fatura vença no mês que vem', () => {
+    const bills = buildBills(
+      [
+        ...billPurchases('2026-06', 6, 26),
+        ...billPurchases('2026-07', 6, 26),
+        ...billPurchases('2026-08', 6, 26),
+        // Setembro só tem parcela lançada à frente: o ciclo dela nem começou.
+        ...billPurchases('2026-09', 4, 5),
+      ],
+      HOJE,
+    );
+
+    const hoje = '2026-07-27';
+    const porMes = new Map(bills.map((b) => [b.month, b.cycleEnd]));
+
+    assert.equal(porMes.get('2026-08'), '2026-07-26');
+    assert.ok(porMes.get('2026-08')! < hoje, 'agosto já fechou');
+    assert.ok(porMes.get('2026-09')! > hoje, 'setembro ainda não');
+  });
+});
+
+describe('inferClosingDay', () => {
+  it('lê o dia do fechamento da última compra de cada fatura', () => {
+    const purchases = [
+      ...billPurchases('2026-05', 6, 26),
+      ...billPurchases('2026-06', 6, 26),
+      ...billPurchases('2026-07', 6, 26),
+    ];
+
+    assert.equal(inferClosingDay(purchases, HOJE), 26);
+  });
+
+  // A mediana é o que faz um mês em que ninguém comprou na última semana não
+  // arrastar a borda: na base de referência isso acontece: dia 9, dia 12, dia 17.
+  it('não deixa um mês que parou de comprar antes puxar a borda', () => {
+    const purchases = [
+      ...billPurchases('2026-05', 6, 26),
+      ...billPurchases('2026-06', 6, 9),
+      ...billPurchases('2026-07', 6, 26),
+    ];
+
+    assert.equal(inferClosingDay(purchases, HOJE), 26);
+  });
+
+  it('ignora fatura pequena, que pode acabar em qualquer dia por acaso', () => {
+    const purchases = [
+      ...billPurchases('2026-04', 6, 20),
+      ...billPurchases('2026-05', 6, 26),
+      ...billPurchases('2026-06', 2, 4),
+      ...billPurchases('2026-07', 6, 26),
+    ];
+
+    // Só as três grandes contam: mediana de [20, 26, 26]. Com a pequena dentro,
+    // a mediana de [4, 20, 26, 26] daria 23.
+    assert.equal(inferClosingDay(purchases, HOJE), 26);
+  });
+
+  // Parcela lançada meses à frente tem data no futuro — a fatura de setembro
+  // existe hoje, com quatro linhas de 28/07 a 17/08, e não fechou nada.
+  it('ignora fatura cuja última compra ainda está no futuro', () => {
+    const purchases = [
+      ...billPurchases('2026-04', 6, 20),
+      ...billPurchases('2026-05', 6, 26),
+      ...billPurchases('2026-07', 6, 26),
+      ...billPurchases('2026-09', 6, 5),
+    ];
+
+    assert.equal(inferClosingDay(purchases, HOJE), 26);
+  });
+
+  it('devolve null quando não há série para inferir', () => {
+    assert.equal(inferClosingDay([]), null);
+    assert.equal(inferClosingDay(billPurchases('2026-07', 6, 26), HOJE), null);
+  });
+});
+
+describe('billCycleEnd', () => {
+  // O `month` nomeia o vencimento, e o consumo vem do mês anterior.
+  it('fecha no mês anterior ao do vencimento', () => {
+    assert.equal(billCycleEnd('2026-08', 26), '2026-07-26');
+  });
+
+  it('vira o ano em janeiro', () => {
+    assert.equal(billCycleEnd('2026-01', 26), '2025-12-26');
+  });
+
+  // Sem o limite, o dia 31 em fevereiro rolaria para março e a fatura fecharia
+  // depois do próprio vencimento.
+  it('não passa do fim de um mês curto', () => {
+    assert.equal(billCycleEnd('2026-03', 31), '2026-02-28');
+  });
+
+  it('cai no mês calendário quando não há fechamento inferido', () => {
+    assert.equal(billCycleEnd('2026-08', null), '2026-07-31');
   });
 });

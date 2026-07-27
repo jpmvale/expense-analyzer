@@ -33,13 +33,21 @@ const Dashboard = () => {
     if (bills.length === 0) return null;
 
     // O cartão traz parcelas de meses que ainda não chegaram: as últimas faturas
-    // da lista são futuras e estão pela metade. Tomá-las como "última fatura"
-    // mostraria um mês de R$ 510 com quatro lançamentos. Os agregados olham só o
-    // que já fechou; o que está agendado aparece à parte, que é informação útil.
+    // da lista estão pela metade. Tomá-las como "última fatura" mostraria um mês
+    // de R$ 510 com quatro lançamentos. Os agregados olham só o que já fechou; o
+    // que está agendado aparece à parte, que é informação útil.
+    //
+    // O recorte é o fim do ciclo, não o mês da fatura: `month` nomeia o mês em
+    // que ela vence, e o consumo vem do anterior. Comparar `month` com o mês
+    // corrente descartava um ciclo inteiro já fechado — em 27/07/2026 a fatura de
+    // agosto, com o ciclo encerrado no dia 26, caía em "faturas futuras" e a tela
+    // analisava junho.
     const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const closed = bills.filter((bill) => bill.month <= currentMonth);
-    const upcoming = bills.filter((bill) => bill.month > currentMonth);
+    const pad = (value: number) => String(value).padStart(2, '0');
+    // Data local, e não UTC: "hoje" aqui é o dia de quem está olhando a tela.
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const closed = bills.filter((bill) => bill.cycleEnd < today);
+    const upcoming = bills.filter((bill) => bill.cycleEnd >= today);
 
     if (closed.length === 0) return null;
 
@@ -157,8 +165,10 @@ const Dashboard = () => {
         <p className="mb-4 text-xs text-muted-foreground">
           Além dessas, <span className="tabular text-foreground">{currency(view.upcomingTotal)}</span>{' '}
           já estão lançados em {view.upcomingCount}{' '}
-          {view.upcomingCount === 1 ? 'fatura futura' : 'faturas futuras'} — parcelas de compras já
-          feitas. Ficam de fora dos números acima.
+          {view.upcomingCount === 1
+            ? 'fatura que ainda não fechou.'
+            : 'faturas que ainda não fecharam.'}{' '}
+          Ficam de fora dos números acima.
         </p>
       )}
 

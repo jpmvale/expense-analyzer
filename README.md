@@ -27,7 +27,7 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | **Classificação** | Você cria suas categorias e diz a que categoria cada estabelecimento pertence. A regra vale para todas as compras dele, passadas e futuras, e **sobrevive ao reprocessamento**. Reclassificar acontece em dois lugares: na tela *Sem categoria*, que lista o que está em `outros` do que mais pesa para o que menos pesa, e direto na coluna Categoria da tabela de Compras. |
 | **Compras** | Lista filtrável por **categoria**, **título** (busca parcial) e **mês da fatura**, com total, quantidade e ticket médio. Tabela ordenável e paginada. |
 | **Gráficos** | Gasto por mês e por categoria, em barras, acompanhando os filtros aplicados. |
-| **Visão geral** | A home: última fatura fechada com a variação contra o mês anterior, média dos doze meses anteriores, total do ano e a composição do mês. Parcelas já lançadas em faturas futuras aparecem à parte, fora dos agregados. O cartão **Fora do normal** compara cada categoria contra o próprio histórico — [como](#o-que-conta-como-fora-do-normal). |
+| **Visão geral** | A home: última fatura fechada com a variação contra o mês anterior, média dos doze meses anteriores, total do ano e a composição do mês. O recorte de "fechada" é o fim do ciclo de compras, não o mês do vencimento: o que ainda não fechou — o ciclo em aberto e as parcelas lançadas à frente — aparece à parte, fora dos agregados. O cartão **Fora do normal** compara cada categoria contra o próprio histórico — [como](#o-que-conta-como-fora-do-normal). |
 | **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês, com o fundo da célula proporcional ao peso. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. Meses com juros ou multa vêm marcados, e o valor aparece à parte do gasto. |
 | **Encargo ≠ gasto** | Juros, multa e saldo rolado saem do total gasto e ganham linha própria. Somá-los respondia "quanto você gastou" com dinheiro que ninguém gastou — [detalhes abaixo](#gasto-e-encargo-não-são-a-mesma-coisa). |
 | **Assinaturas** | Detecta as cobranças que se repetem todo mês com preço estável e mostra a **escada de preços** de cada uma: quando mudou, de quanto para quanto. É o que o app do banco não faz, porque depende de anos de série contínua — [como funciona](#como-uma-assinatura-é-detectada). |
@@ -260,12 +260,14 @@ um mês fora da curva dá z=47 — matematicamente certo e ilegível. Quem lê q
   nível depois de alguns meses.
 - **Categoria nova nunca aparece.** Sem histórico não há expectativa, então uma categoria que surge
   do nada fica de fora por definição, por maior que seja. Ela está na composição do mês, ao lado.
-- **Herda o recorte de "fatura fechada" da Visão geral, e ele atrasa um ciclo.** A tela considera
-  fechada a fatura cujo `month` é menor ou igual ao mês corrente, mas o `referenceMonth` nomeia o mês
-  em que a fatura *vence*, não o das compras: a de agosto cobre o consumo de 26/06 a 26/07. Em
-  27/07/2026, a de agosto já estava completa e mesmo assim caía no balde de "faturas futuras", então
-  o cartão analisava junho. O critério não erra por incluir mês pela metade — erra por descartar mês
-  inteiro.
+- **O ciclo em aberto não é comparado.** A comparação só olha fatura fechada, então o consumo das
+  últimas semanas fica de fora até o ciclo virar — é a escolha certa (metade de um mês contra doze
+  meses inteiros acusaria queda em tudo), mas significa que a notícia chega uma vez por ciclo, não
+  quando a compra acontece.
+- **O corte é uma linha, e perto dela ele silencia gasto grande.** Em ago/26 o `supermercado` foi de
+  R$ 614 para R$ 1.197 — R$ 584 acima do normal — e o cartão não disse nada, porque supermercado
+  oscila o bastante para isso ficar a 2,4 desvios. Está do lado certo da régua e ainda assim é
+  dinheiro que você ia querer ver. Qualquer limiar tem essa borda; este a tem em R$ 584.
 
 ---
 
@@ -540,12 +542,13 @@ Para inspecionar o banco pelo navegador: `docker compose --profile tools up -d` 
 - `GET /purchase/recurring` varre a coleção inteira e agrupa em memória a cada requisição, porque a
   escada de preços depende da série completa. Mesmo custo da reaplicação de regras, e some igual numa
   base pessoal.
-- **A Visão geral descarta a última fatura fechada.** `referenceMonth` nomeia o mês de vencimento, e
-  não o das compras: em 27/07/2026, a fatura de agosto — consumo de 26/06 a 26/07, R$ 7.245,24 e 105
-  compras — já estava completa, mas o filtro `month <= mês corrente` a jogava em "faturas futuras".
-  Todos os números da home atrasam um ciclo por causa disso, inclusive o *Fora do normal*. A nota de
-  rodapé também descreve essas faturas como "parcelas de compras já feitas", o que só vale para a
-  última delas.
+- **O dia em que o ciclo fecha é inferido, não informado.** O CSV não diz em que dia a fatura fecha, e
+  a diferença importa: `referenceMonth` nomeia o mês do *vencimento*, e o consumo vem do mês anterior
+  — a fatura de agosto/2026 cobre 26/06 a 26/07. A API lê a borda das próprias compras, pela mediana
+  do dia da última compra das 24 faturas recentes (dia 26 na base de referência: 13× no 26, 9× no 25,
+  2× no 23), e o erro nunca é positivo — nenhuma compra passa do dia inferido. Em troca, um ciclo que
+  fechou dias antes do usual só é reconhecido como fechado no dia inferido. Com menos de três faturas
+  de histórico não há o que inferir e o recorte cai no mês calendário, que é o que a tela fazia antes.
 - Os testes cobrem as funções puras onde moram as regras: o parser de CSV, a montagem do filtro do
   Mongo, a detecção de assinatura, a comparação com o histórico e o agrupamento dos gráficos. Não há
   testes de integração — o CI compensa com lint, typecheck, build e um smoke test da API contra um

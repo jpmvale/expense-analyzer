@@ -3,9 +3,16 @@ import { describe, it } from 'node:test';
 import type Bill from '../interface/bill';
 import { buildCategoryExpectations } from './categoryExpectation';
 
+/** O ciclo da fatura fecha no mês anterior ao do vencimento. */
+function cycleEnd(month: string): string {
+  const [year, monthNumber] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, monthNumber - 2, 26)).toISOString().slice(0, 10);
+}
+
 function bill(month: string, categories: Record<string, number>): Bill {
   return {
     month,
+    cycleEnd: cycleEnd(month),
     valuePaid: 0,
     total: Object.values(categories).reduce((acc, value) => acc + value, 0),
     charges: 0,
