@@ -7,6 +7,20 @@ import { CategoryMemory, parseBillCsv, referenceMonthFromFileName } from '../par
 
 const SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
 
+/**
+ * Restringe uma busca do Drive aos arquivos vivos.
+ *
+ * O `files.list` inclui a lixeira por padrão: um arquivo apagado continua sendo
+ * devolvido até ser removido em definitivo. Sem isto, apagar uma fatura duplicada
+ * no Drive não tem efeito nenhum aqui — ela volta na próxima extração.
+ *
+ * O filtro do usuário vai entre parênteses porque ele pode conter `or`, e sem os
+ * parênteses o `and` teria precedência sobre parte da expressão.
+ */
+export function excludeTrashed(query: string): string {
+  return `(${query}) and trashed = false`;
+}
+
 /** Reaproveita o refresh token salvo, evitando abrir o navegador toda execução. */
 async function loadSavedCredentials() {
   try {
@@ -68,7 +82,7 @@ export async function fetchBillsFromDrive(): Promise<Bill[]> {
   const drive = google.drive({ version: 'v3', auth: auth as never });
 
   const res = await drive.files.list({
-    q: config.driveFileQuery,
+    q: excludeTrashed(config.driveFileQuery),
     orderBy: 'name asc',
     fields: 'files(id, name)',
     pageSize: 1000,
