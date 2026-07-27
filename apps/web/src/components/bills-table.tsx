@@ -9,11 +9,19 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  TableWrapper,
 } from '@/components/ui/table';
 import type Bill from '@/interface/bill';
 import { categoriesByVolume } from '@/lib/billColumns';
 import { capitalize, cn, currency, formatMonth } from '@/lib/utils';
+
+/**
+ * Célula de cabeçalho fixa no topo da área de rolagem.
+ *
+ * O fundo precisa ser opaco, senão as linhas aparecem por baixo ao rolar. A borda
+ * inferior vem de `shadow` e não de `border` porque borda de elemento sticky não
+ * acompanha o deslocamento e some.
+ */
+const STICKY_HEAD = 'sticky top-0 bg-card shadow-[inset_0_-1px_0_var(--border)]';
 
 /**
  * Intensidade do fundo da célula, proporcional ao peso da categoria no mês.
@@ -119,19 +127,30 @@ export function BillsTable({ bills }: { bills: Bill[] }) {
       </div>
 
       <Card className="hidden overflow-hidden md:block">
-        <TableWrapper>
+        {/*
+         * A tabela rola por conta própria, nos dois eixos, em vez de acompanhar a
+         * página. É o que permite fixar o cabeçalho: `sticky top-0` se ancora no
+         * contexto de rolagem mais próximo, e o `overflow-x` que a tabela já
+         * precisava para as 19 colunas cria justamente esse contexto — dentro
+         * dele, "topo da página" não existe.
+         */}
+        <div className="max-h-[calc(100dvh-14rem)] min-h-80 w-full overflow-auto">
           <Table>
             <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                {/* A coluna do mês fica fixa: sem ela, rolar para a direita
-                    perde a referência de qual fatura se está lendo. */}
-                <TableHead className="sticky left-0 z-10 bg-card">Mês</TableHead>
-                <TableHead className="text-right">Valor pago</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">vs anterior</TableHead>
-                <TableHead className="text-right">Compras</TableHead>
+              <TableRow className="border-b-0 hover:bg-transparent">
+                {/*
+                 * Mês fixa nos dois eixos, e por isso com z maior: é a célula de
+                 * canto, que precisa passar por cima tanto do cabeçalho quanto da
+                 * coluna. A borda vem de `shadow` porque `border` em elemento
+                 * sticky some ao rolar.
+                 */}
+                <TableHead className={cn(STICKY_HEAD, 'left-0 z-30')}>Mês</TableHead>
+                <TableHead className={cn(STICKY_HEAD, 'z-20 text-right')}>Valor pago</TableHead>
+                <TableHead className={cn(STICKY_HEAD, 'z-20 text-right')}>Total</TableHead>
+                <TableHead className={cn(STICKY_HEAD, 'z-20 text-right')}>vs anterior</TableHead>
+                <TableHead className={cn(STICKY_HEAD, 'z-20 text-right')}>Compras</TableHead>
                 {categories.map((category) => (
-                  <TableHead key={category} className="text-right">
+                  <TableHead key={category} className={cn(STICKY_HEAD, 'z-20 text-right')}>
                     {capitalize(category)}
                   </TableHead>
                 ))}
@@ -180,7 +199,7 @@ export function BillsTable({ bills }: { bills: Bill[] }) {
               ))}
             </TableBody>
           </Table>
-        </TableWrapper>
+        </div>
       </Card>
     </>
   );
