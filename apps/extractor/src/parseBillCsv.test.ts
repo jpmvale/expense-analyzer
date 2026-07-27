@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { CategoryMemory, parseBillCsv, referenceMonthFromFileName } from './parseBillCsv';
+import {
+  CategoryMemory,
+  parseAmount,
+  parseBillCsv,
+  referenceMonthFromFileName,
+} from './parseBillCsv';
 
 const MARCO = new Date('2025-03-01T00:00:00.000Z');
 
@@ -8,7 +13,42 @@ function parse(csv: string, memory = new CategoryMemory()) {
   return parseBillCsv(csv, MARCO, memory);
 }
 
+// Regressão: o emissor passou a exportar valores no formato brasileiro a partir
+// de abril de 2025, misturado com o antigo no mesmo arquivo. O `parseFloat` cru
+// devolvia NaN e a linha era descartada sem aviso — 55 lançamentos sumiram assim,
+// entre eles quase todos os pagamentos, que é por que "Valor pago" ficou vazio.
+describe('parseAmount', () => {
+  it('lê o formato antigo, com ponto decimal', () => {
+    assert.equal(parseAmount('-3110.02'), -3110.02);
+    assert.equal(parseAmount('231.45'), 231.45);
+  });
+
+  it('lê o formato brasileiro, com vírgula decimal e ponto de milhar', () => {
+    assert.equal(parseAmount('- 2.944,60'), -2944.6);
+    assert.equal(parseAmount('2.944,59'), 2944.59);
+    assert.equal(parseAmount('- 3,86'), -3.86);
+    assert.equal(parseAmount('1.234.567,89'), 1234567.89);
+  });
+
+  it('ignora o espaço entre o sinal e o número', () => {
+    assert.equal(parseAmount('- 70,58'), -70.58);
+    assert.equal(parseAmount(' -70.58 '), -70.58);
+  });
+
+  it('devolve NaN para o que não é número, para a linha ser descartada', () => {
+    assert.ok(Number.isNaN(parseAmount('')));
+    assert.ok(Number.isNaN(parseAmount('abc')));
+  });
+});
+
 describe('parseBillCsv', () => {
+  it('aceita valor em formato brasileiro, entre aspas', () => {
+    const [purchase] = parse(
+      'date,category,title,amount\n2025-04-06,payment,Pagamento recebido,"- 2.944,60"',
+    );
+    assert.equal(purchase.amount, -2944.6);
+  });
+
   it('lê as colunas e carimba o mês de referência', () => {
     const [purchase] = parse('date,category,title,amount\n2025-02-28,supermercado,CARREFOUR,231.45');
 

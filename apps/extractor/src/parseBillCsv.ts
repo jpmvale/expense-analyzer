@@ -43,6 +43,30 @@ const KEYWORD_CATEGORIES: Record<string, string[]> = {
 
 const FALLBACK_CATEGORY = 'outros';
 
+/**
+ * Converte o valor da fatura em número, aceitando os dois formatos que o emissor
+ * mistura — às vezes no mesmo arquivo.
+ *
+ *   -3110.02       ponto decimal, como sempre foi
+ *   "- 2.944,60"   ponto de milhar, vírgula decimal, espaço depois do sinal
+ *
+ * O segundo formato apareceu a partir de abril de 2025 e devolvia `NaN` no
+ * `parseFloat`, o que fazia a linha ser descartada sem aviso: 55 lançamentos
+ * sumiram assim, incluindo quase todos os "Pagamento recebido" desde então, que é
+ * por que a coluna "Valor pago" ficou vazia de abril de 2025 em diante.
+ *
+ * A regra é a vírgula: se existe, ela é o separador decimal e os pontos são de
+ * milhar. Sem vírgula, o ponto é decimal. Fica ambíguo só para um valor como
+ * `1.234` sem casas decimais, que o formato antigo nunca produziu.
+ */
+export function parseAmount(raw: string): number {
+  const cleaned = raw.replace(/\s/g, '');
+  const normalized = cleaned.includes(',')
+    ? cleaned.replace(/\./g, '').replace(',', '.')
+    : cleaned;
+  return Number.parseFloat(normalized);
+}
+
 /** Caixa baixa e sem acento — usado só na comparação por palavra-chave. */
 function normalize(value: string): string {
   return value
@@ -217,7 +241,7 @@ export function parseBillCsv(
   const purchases: Purchase[] = [];
   for (const row of rows) {
     const title = row.title;
-    const amount = Number.parseFloat(row.amount);
+    const amount = parseAmount(row.amount);
     const date = new Date(row.date);
 
     if (!title || Number.isNaN(amount) || amount === 0 || Number.isNaN(date.getTime())) {
