@@ -36,6 +36,24 @@ const COLUMNS: Array<{ key: SortKey; label: string; className?: string }> = [
 
 const PAGE_SIZES = [25, 50, 100, 250];
 
+/**
+ * A API devolve as compras em ordem cronológica, o que fazia a tela abrir em
+ * 2018. Numa tela de explorar gastos, o que interessa é o que aconteceu agora.
+ */
+const DEFAULT_SORT: Sort = { key: 'date', direction: 'desc' };
+
+/**
+ * Colunas em que o primeiro clique já ordena do maior para o menor: em valor e
+ * data, "maior primeiro" é a pergunta que se faz — quais foram as maiores compras,
+ * quais foram as mais recentes. Em texto, a ordem alfabética é a natural.
+ */
+const DESC_FIRST: SortKey[] = ['amount', 'date', 'referenceMonth'];
+
+interface Sort {
+  key: SortKey;
+  direction: Direction;
+}
+
 function compare(a: Purchase, b: Purchase, key: SortKey, direction: Direction): number {
   const left = a[key];
   const right = b[key];
@@ -62,28 +80,28 @@ export function PurchasesTable({
   purchases: Purchase[];
   loading?: boolean;
 }) {
-  const [sort, setSort] = useState<{ key: SortKey; direction: Direction } | null>(null);
+  const [sort, setSort] = useState<Sort>(DEFAULT_SORT);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(PAGE_SIZES[1]);
 
-  const sorted = useMemo(() => {
-    if (!sort) return purchases;
-    return [...purchases].sort((a, b) => compare(a, b, sort.key, sort.direction));
-  }, [purchases, sort]);
+  const sorted = useMemo(
+    () => [...purchases].sort((a, b) => compare(a, b, sort.key, sort.direction)),
+    [purchases, sort],
+  );
 
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const current = Math.min(page, pageCount - 1);
   const start = current * pageSize;
   const rows = sorted.slice(start, start + pageSize);
 
+  // Sempre há uma ordenação. Antes o terceiro clique voltava à ordem da API, um
+  // estado sem nome na tela que agora seria só "de 2018 para cá" — confuso.
   const toggleSort = (key: SortKey) => {
     setPage(0);
     setSort((prev) =>
-      prev?.key === key
-        ? prev.direction === 'asc'
-          ? { key, direction: 'desc' }
-          : null
-        : { key, direction: 'asc' },
+      prev.key === key
+        ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: DESC_FIRST.includes(key) ? 'desc' : 'asc' },
     );
   };
 
@@ -136,7 +154,7 @@ export function PurchasesTable({
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               {COLUMNS.map(({ key, label, className }) => {
-                const active = sort?.key === key;
+                const active = sort.key === key;
                 const SortIcon = !active
                   ? ArrowUpDownIcon
                   : sort.direction === 'asc'
