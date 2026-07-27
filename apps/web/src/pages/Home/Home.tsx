@@ -16,12 +16,16 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { currency } from '@/lib/utils';
-import { CategorySpendChart } from '@/components/charts/category-spend-chart';
+import { CategoryBreakdown } from '@/components/category-breakdown';
 import { MonthlySpendChart } from '@/components/charts/monthly-spend-chart';
-import { CardHeader, CardTitle } from '@/components/ui/card';
+import { CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import { listBills, listPurchases } from '../../api/client';
 import { groupByCategory, groupByMonth } from '../../lib/groupPurchases';
 import type Purchase from '../../interface/purchase';
+
+/** Quantas categorias o painel lista. Acima disso a cauda não informa nada. */
+const TOP_CATEGORIES = 7;
 
 /** Espera o usuário parar de digitar antes de consultar a API. */
 function useDebounced<T>(value: T, delay = 350): T {
@@ -104,7 +108,25 @@ function Home() {
       })),
     [purchases],
   );
-  const dataByCategory = useMemo(() => groupByCategory(purchases), [purchases]);
+
+  const categoryBreakdown = useMemo(() => {
+    const total = purchases.reduce((acc, purchase) => acc + purchase.amount, 0);
+    return groupByCategory(purchases).map((group) => {
+      const totalCategory = group.data.reduce((acc, purchase) => acc + purchase.amount, 0);
+      return {
+        categoryByMonth: group.value,
+        totalCategory,
+        frequency: group.data.length,
+        percentage: total > 0 ? (totalCategory * 100) / total : 0,
+      };
+    });
+  }, [purchases]);
+
+  // Cada painel some quando vira trivial: filtrando uma fatura só, o gráfico por
+  // mês teria uma barra; filtrando uma categoria só, a composição teria 100% dela.
+  const showMonthly = !month;
+  const showCategories = selectedCategories.length !== 1;
+  const hasPanels = showMonthly || showCategories;
 
   return (
     <>
@@ -171,33 +193,52 @@ function Home() {
         />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-        <PurchasesTable purchases={purchases} loading={loading} />
-
-        {!loading && purchases.length > 0 && (
-          <div className="space-y-4">
-            {/* Filtrando uma fatura só, o gráfico por mês teria uma barra só. */}
-            {!month && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle>Gasto por mês</CardTitle>
-                </CardHeader>
-                <div className="pr-4 pb-3 pl-1">
-                  <MonthlySpendChart points={pointsByMonth} height={300} />
-                </div>
-              </Card>
-            )}
+      {/*
+       * Os painéis ficam acima da tabela e ocupam a linha inteira, em vez de
+       * disputar a largura com ela. A tabela é o assunto desta tela — os painéis
+       * dão a forma do conjunto filtrado, e a tabela mostra o detalhe.
+       */}
+      {!loading && purchases.length > 0 && hasPanels && (
+        <div
+          className={cn(
+            'mb-4 grid gap-4',
+            showMonthly && showCategories && 'lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]',
+          )}
+        >
+          {showMonthly && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle>Gasto por categoria</CardTitle>
+                <CardTitle>Gasto por mês</CardTitle>
+                <CardDescription>
+                  {pointsByMonth.length} {pointsByMonth.length === 1 ? 'mês' : 'meses'} no recorte
+                  atual
+                </CardDescription>
               </CardHeader>
               <div className="pr-4 pb-3 pl-1">
-                <CategorySpendChart data={dataByCategory} />
+                <MonthlySpendChart points={pointsByMonth} height={240} />
               </div>
             </Card>
-          </div>
-        )}
-      </div>
+          )}
+
+          {showCategories && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle>Onde o dinheiro foi</CardTitle>
+                <CardDescription>
+                  {categoryBreakdown.length > TOP_CATEGORIES
+                    ? `As ${TOP_CATEGORIES} maiores de ${categoryBreakdown.length} categorias`
+                    : 'Por categoria, da maior para a menor'}
+                </CardDescription>
+              </CardHeader>
+              <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+                <CategoryBreakdown categories={categoryBreakdown} limit={TOP_CATEGORIES} />
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      <PurchasesTable purchases={purchases} loading={loading} />
     </>
   );
 }
