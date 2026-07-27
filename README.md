@@ -27,7 +27,7 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | **Classificação** | Você cria suas categorias e diz a que categoria cada estabelecimento pertence. A regra vale para todas as compras dele, passadas e futuras, e **sobrevive ao reprocessamento**. Reclassificar acontece em dois lugares: na tela *Sem categoria*, que lista o que está em `outros` do que mais pesa para o que menos pesa, e direto na coluna Categoria da tabela de Compras. |
 | **Compras** | Lista filtrável por **categoria**, **título** (busca parcial) e **mês da fatura**, com total, quantidade e ticket médio. Tabela ordenável e paginada. |
 | **Gráficos** | Gasto por mês e por categoria, em barras, acompanhando os filtros aplicados. |
-| **Visão geral** | A home: última fatura fechada com a variação contra o mês anterior, média dos doze meses anteriores, total do ano e a composição do mês. Parcelas já lançadas em faturas futuras aparecem à parte, fora dos agregados. |
+| **Visão geral** | A home: última fatura fechada com a variação contra o mês anterior, média dos doze meses anteriores, total do ano e a composição do mês. Parcelas já lançadas em faturas futuras aparecem à parte, fora dos agregados. O cartão **Fora do normal** compara cada categoria contra o próprio histórico — [como](#o-que-conta-como-fora-do-normal). |
 | **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês, com o fundo da célula proporcional ao peso. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. Meses com juros ou multa vêm marcados, e o valor aparece à parte do gasto. |
 | **Encargo ≠ gasto** | Juros, multa e saldo rolado saem do total gasto e ganham linha própria. Somá-los respondia "quanto você gastou" com dinheiro que ninguém gastou — [detalhes abaixo](#gasto-e-encargo-não-são-a-mesma-coisa). |
 | **Assinaturas** | Detecta as cobranças que se repetem todo mês com preço estável e mostra a **escada de preços** de cada uma: quando mudou, de quanto para quanto. É o que o app do banco não faz, porque depende de anos de série contínua — [como funciona](#como-uma-assinatura-é-detectada). |
@@ -225,6 +225,50 @@ regra não importar.
 
 ---
 
+## O que conta como "fora do normal"
+
+"Restaurante: R$ 359" não diz se é muito. O sistema descrevia sem comparar, e três telas de leitura
+não davam uma decisão. O cartão da Visão geral compara cada categoria da última fatura contra o
+próprio histórico — e o normal de cada uma é diferente: na base de referência a `Academia` varia 7%
+ao mês e `lazer` varia 94%, então os mesmos "+40%" significam coisas opostas nas duas.
+
+**A régua não é percentual.** Um corte de "40% acima da média" acusava quatro categorias num mês da
+base, e duas eram oscilação normal: `serviços` a −49% estava a 0,7 desvio do seu padrão, e `Bebidas`
+a −51% estava a 0,4. A Amazon, no mesmo mês, estava a **13,6 desvios**. O que decide é o desvio
+relativo à variação da própria categoria; o percentual só aparece na tela, para ser lido.
+
+| Regra | Por quê |
+| --- | --- |
+| Referência é a **mediana** dos 12 meses anteriores | Uma viagem de R$ 2.600 num mês levantaria a média de transporte pelo ano inteiro e esconderia justamente o mês em que o gasto fugiu. |
+| Dispersão medida pelo **desvio absoluto mediano** | Pelo mesmo motivo: o desvio-padrão é inflado pelo próprio pico que se quer detectar. |
+| ≥ 2,5 desvios | Calibrado sobre doze meses, não sobre um: dá 1,7 alerta por mês, com um mês em doze sem nenhum. |
+| ≥ R$ 150 de diferença | Percentual mente na escala pequena — uma categoria de R$ 12 que vai a R$ 30 subiu 150% e não mudou nada. |
+| ≥ 6 dos 12 meses com gasto | Quem aparece em quatro meses não tem "normal", tem esporadicidade, e compará-la geraria alarme a cada compra. Corta `viagem` (1/12), `eletrônicos` (1/12), `Shein` (2/12), `Carro` e `casa` (4/12). |
+
+O mês em que a categoria não aparece conta como **zero**, e isso é o ponto: deixar de gastar é tão
+informativo quanto gastar demais. Na base de referência, `Combustível` acendeu dois meses seguidos
+por ter ido a zero.
+
+O desvio em si **não vai para a tela**. Uma categoria muito previsível tem dispersão minúscula, e aí
+um mês fora da curva dá z=47 — matematicamente certo e ilegível. Quem lê quer reais e percentual.
+
+### Onde a comparação falha
+
+- **Mudança de patamar acende por meses seguidos.** Na base de referência, `lazer` saiu de ~R$ 100
+  para ~R$ 400 e ficou: apareceu cinco meses consecutivos, porque em cada um deles ele *estava* acima
+  da mediana dos doze anteriores. É verdade, mas deixa de ser notícia — a mediana só absorve o novo
+  nível depois de alguns meses.
+- **Categoria nova nunca aparece.** Sem histórico não há expectativa, então uma categoria que surge
+  do nada fica de fora por definição, por maior que seja. Ela está na composição do mês, ao lado.
+- **Herda o recorte de "fatura fechada" da Visão geral, e ele atrasa um ciclo.** A tela considera
+  fechada a fatura cujo `month` é menor ou igual ao mês corrente, mas o `referenceMonth` nomeia o mês
+  em que a fatura *vence*, não o das compras: a de agosto cobre o consumo de 26/06 a 26/07. Em
+  27/07/2026, a de agosto já estava completa e mesmo assim caía no balde de "faturas futuras", então
+  o cartão analisava junho. O critério não erra por incluir mês pela metade — erra por descartar mês
+  inteiro.
+
+---
+
 ## Como uma assinatura é detectada
 
 O que define recorrência aqui é o **patamar de preço**, não a cadência. Cadência sozinha não
@@ -252,7 +296,7 @@ Um lançamento solitário não é preço: sem essa regra, uma taxa avulsa de R$ 
 de R$ 149,90 fazia a tela anunciar um reajuste de **+1414%**, que seria o maior número da página e não
 quer dizer nada.
 
-### O que ela erra
+### Onde a detecção falha
 
 - **Parcelamento sem o sufixo.** `Casasbahia.C*287604502` são nove parcelas de R$ 183,84 que o emissor
   não numerou no título. É indistinguível de uma assinatura cancelada, e aparece como tal. Fica entre
@@ -491,14 +535,21 @@ Para inspecionar o banco pelo navegador: `docker compose --profile tools up -d` 
   de compras, algumas centenas de títulos — isso some no tempo da requisição. Numa base grande,
   não sumiria.
 - **A detecção de assinatura é uma tela, não um aviso.** O degrau de preço está lá, mas você precisa
-  ir olhar: não há alerta quando um reajuste aparece numa fatura nova. O que a detecção erra de
-  propósito está em [O que ela erra](#o-que-ela-erra).
+  ir olhar: não há alerta quando um reajuste aparece numa fatura nova. O que ela erra de propósito
+  está em [Onde a detecção falha](#onde-a-detecção-falha).
 - `GET /purchase/recurring` varre a coleção inteira e agrupa em memória a cada requisição, porque a
   escada de preços depende da série completa. Mesmo custo da reaplicação de regras, e some igual numa
   base pessoal.
+- **A Visão geral descarta a última fatura fechada.** `referenceMonth` nomeia o mês de vencimento, e
+  não o das compras: em 27/07/2026, a fatura de agosto — consumo de 26/06 a 26/07, R$ 7.245,24 e 105
+  compras — já estava completa, mas o filtro `month <= mês corrente` a jogava em "faturas futuras".
+  Todos os números da home atrasam um ciclo por causa disso, inclusive o *Fora do normal*. A nota de
+  rodapé também descreve essas faturas como "parcelas de compras já feitas", o que só vale para a
+  última delas.
 - Os testes cobrem as funções puras onde moram as regras: o parser de CSV, a montagem do filtro do
-  Mongo, a detecção de assinatura e o agrupamento dos gráficos. Não há testes de integração — o CI compensa com lint,
-  typecheck, build e um smoke test da API contra um MongoDB de verdade.
+  Mongo, a detecção de assinatura, a comparação com o histórico e o agrupamento dos gráficos. Não há
+  testes de integração — o CI compensa com lint, typecheck, build e um smoke test da API contra um
+  MongoDB de verdade.
 - A interface é **escura por padrão**, com alternador claro/escuro/sistema. Os tokens vivem em
   `apps/web/src/assets/globals.css`, no padrão CSS-first do Tailwind 4.
 

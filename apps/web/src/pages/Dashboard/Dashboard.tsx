@@ -3,11 +3,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CategoryBreakdown } from '@/components/category-breakdown';
 import { MonthlySpendChart } from '@/components/charts/monthly-spend-chart';
+import { ExpectationList } from '@/components/expectation-list';
 import { PageHeader } from '@/components/layout/app-shell';
 import { StatCard } from '@/components/stat-card';
 import { TrendBadge } from '@/components/trend-badge';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { buildCategoryExpectations } from '@/lib/categoryExpectation';
 import { currency, formatMonth } from '@/lib/utils';
 import { listBills } from '../../api/client';
 import type Bill from '../../interface/bill';
@@ -67,6 +69,10 @@ const Dashboard = () => {
       first: closed[0],
       upcomingTotal: upcoming.reduce((acc, bill) => acc + bill.total, 0),
       upcomingCount: upcoming.length,
+      // Comparar contra o histórico, e não só descrever: "restaurante R$ 359"
+      // não diz se é muito. A régua é a própria categoria — cada uma tem uma
+      // variação natural diferente.
+      expectations: buildCategoryExpectations(closed),
       points: closed.slice(-WINDOW).map((bill) => ({
         month: bill.month,
         total: bill.total,
@@ -170,32 +176,54 @@ const Dashboard = () => {
           </div>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle>
-              Composição de {view ? formatMonth(view.latest.month) : '…'}
-            </CardTitle>
-          </CardHeader>
-          <div className="px-4 pb-4 sm:px-5 sm:pb-5">
-            {loading || !view ? (
-              <div className="space-y-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} className="h-5 w-full" />
-                ))}
-              </div>
-            ) : (
-              <>
-                <CategoryBreakdown categories={view.latest.categoriesResult} />
-                <Link
-                  to="/bills"
-                  className="mt-4 inline-block text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
-                >
-                  Ver todas as faturas
-                </Link>
-              </>
-            )}
-          </div>
-        </Card>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Fora do normal</CardTitle>
+            </CardHeader>
+            <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+              {loading || !view ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <Skeleton key={i} className="h-9 w-full" />
+                  ))}
+                </div>
+              ) : (
+                <ExpectationList
+                  expectations={view.expectations}
+                  month={formatMonth(view.latest.month)}
+                />
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>
+                Composição de {view ? formatMonth(view.latest.month) : '…'}
+              </CardTitle>
+            </CardHeader>
+            <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+              {loading || !view ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <Skeleton key={i} className="h-5 w-full" />
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <CategoryBreakdown categories={view.latest.categoriesResult} />
+                  <Link
+                    to="/bills"
+                    className="mt-4 inline-block text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                  >
+                    Ver todas as faturas
+                  </Link>
+                </>
+              )}
+            </div>
+          </Card>
+        </div>
       </div>
     </>
   );
