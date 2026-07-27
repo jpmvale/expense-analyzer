@@ -87,6 +87,48 @@ describe('parseBillCsv', () => {
       assert.equal(purchase.category, 'outros');
     });
   });
+
+  // O Nubank mistura códigos internos de transação no campo categoria. Eles vazavam
+  // crus para a tela, cada variação virando uma coluna própria e uma fatia na pizza.
+  describe('códigos internos do Nubank', () => {
+    function categoriaDe(codigo: string) {
+      return parse(`date,category,title,amount\n2025-03-02,${codigo},LOJA X,20`)[0].category;
+    }
+
+    it('agrupa toda a família reversal_* em "estorno"', () => {
+      for (const codigo of [
+        'reversal_brazil_settled',
+        'reversal_brazil_due',
+        'reversal_foreign_settled',
+        'reversal_upfront_national_settled',
+        'reversal_upfront_national_due',
+      ]) {
+        assert.equal(categoriaDe(codigo), 'estorno', codigo);
+      }
+    });
+
+    it('traduz tax_* e bnpl_*', () => {
+      assert.equal(categoriaDe('tax_foreign'), 'impostos');
+      assert.equal(categoriaDe('bnpl_transaction_upfront_national'), 'parcelado');
+    });
+
+    it('não toca nas categorias de verdade', () => {
+      for (const categoria of ['supermercado', 'eletrônicos', 'saúde', 'outros', 'payment']) {
+        assert.equal(categoriaDe(categoria), categoria);
+      }
+    });
+
+    // Um código descreve o tipo da transação, não o estabelecimento: sem isto, uma
+    // padaria que teve um estorno viraria "estorno" nos meses sem categoria.
+    it('não entram na memória de categorização', () => {
+      const memory = new CategoryMemory();
+      parse('date,category,title,amount\n2025-03-02,reversal_brazil_settled,PADARIA,-20', memory);
+      const [purchase] = parse('date,category,title,amount\n2025-03-09,,PADARIA,18', memory);
+
+      assert.notEqual(purchase.category, 'estorno');
+      assert.equal(purchase.category, 'outros');
+    });
+  });
 });
 
 describe('referenceMonthFromFileName', () => {

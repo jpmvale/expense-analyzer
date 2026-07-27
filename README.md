@@ -23,7 +23,7 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | Área | O que faz |
 | --- | --- |
 | **Ingestão** | Lê as faturas em CSV do **Google Drive** ou de uma **pasta local**, categoriza as compras e grava no MongoDB. Regravar uma fatura sobrescreve o mês inteiro — rodar de novo é idempotente. |
-| **Categorização** | Usa a categoria do CSV quando existe. Quando não, herda de um título já categorizado em outra fatura, tenta palavras-chave (uber/99app → transporte) e cai em `outros`. |
+| **Categorização** | Usa a categoria do CSV quando existe. Quando não, herda de um título já categorizado em outra fatura, tenta palavras-chave (uber/99app → transporte) e cai em `outros`. Códigos internos do emissor viram rótulos do domínio: `reversal_*` → `estorno`, `tax_*` → `impostos`, `bnpl_*` → `parcelado`. |
 | **Compras** | Lista filtrável por **categoria**, **título** (busca parcial) e **mês da fatura**, com total, quantidade e ticket médio. Tabela ordenável e paginada. |
 | **Gráficos** | Gasto por mês (barras) e por categoria (pizza), acompanhando os filtros aplicados. |
 | **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. |

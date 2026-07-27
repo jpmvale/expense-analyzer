@@ -11,6 +11,30 @@ const KEYWORD_CATEGORIES: Record<string, string[]> = {
 const FALLBACK_CATEGORY = 'outros';
 
 /**
+ * O Nubank mistura códigos internos de transação no campo `category`
+ * (`reversal_brazil_settled`, `tax_foreign`, `bnpl_transaction_upfront_national`).
+ * Eles não são tipos de gasto, e vazavam crus para a tela: cada variação virava
+ * uma coluna própria na tabela de faturas e uma fatia na pizza.
+ *
+ * As famílias são traduzidas para um rótulo só do domínio. São prefixos, e não a
+ * lista exata de códigos, porque o Nubank cria variações novas (`_settled`,
+ * `_due`, `_national`, `_foreign`) sem aviso.
+ */
+const CATEGORY_ALIASES: Array<[RegExp, string]> = [
+  [/^reversal_/, 'estorno'],
+  [/^tax_/, 'impostos'],
+  [/^bnpl_/, 'parcelado'],
+];
+
+/** Rótulo de domínio para um código interno, ou `null` se não for um deles. */
+export function aliasForCategory(category: string): string | null {
+  for (const [pattern, label] of CATEGORY_ALIASES) {
+    if (pattern.test(category)) return label;
+  }
+  return null;
+}
+
+/**
  * Memória de categorização compartilhada entre as faturas de uma mesma execução:
  * quando um título aparece categorizado em qualquer mês, os meses em que ele veio
  * sem categoria herdam a mesma. É o que faz o histórico ficar consistente.
@@ -98,8 +122,15 @@ export function parseBillCsv(
 
   // Primeira passada: registra o que já vem categorizado, para a segunda passada
   // poder inferir mesmo quando o título categorizado aparece depois no arquivo.
+  //
+  // Códigos internos ficam de fora da memória de propósito: eles descrevem o tipo
+  // da transação, não o estabelecimento. Lembrar que "PADARIA BELA VISTA" apareceu
+  // uma vez como estorno faria as compras normais da padaria virarem estorno nos
+  // meses em que viessem sem categoria.
   for (const row of rows) {
-    if (row.category && row.title) memory.remember(row.category, row.title);
+    if (row.category && row.title && !aliasForCategory(row.category)) {
+      memory.remember(row.category, row.title);
+    }
   }
 
   const purchases: Purchase[] = [];
@@ -112,11 +143,13 @@ export function parseBillCsv(
       continue;
     }
 
+    const category = row.category || inferCategory(title, memory);
+
     purchases.push({
       title,
       amount,
       date,
-      category: row.category || inferCategory(title, memory),
+      category: aliasForCategory(category) ?? category,
       referenceMonth,
     });
   }
