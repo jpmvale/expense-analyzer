@@ -1,7 +1,7 @@
 import {
-  isProtectedCategory,
+  isReservedCategory,
   normalize,
-  PROTECTED_CATEGORIES,
+  PAYMENT_CATEGORY,
   reapplyRules,
   type ReapplyResult,
 } from '@expense/categorization';
@@ -36,15 +36,16 @@ export class CategoryService {
    * dispensa migrar a base para dentro da coleção e sobrevive a uma categoria
    * nova chegando numa fatura amanhã.
    *
-   * As protegidas ficam de fora: `payment`, `estorno`, `impostos` e `parcelado`
-   * descrevem o tipo da transação, e uma regra apontando para elas seria aceita
-   * pela tela e ignorada pela reaplicação — melhor não oferecer.
+   * Só o `payment` fica de fora, porque não é categoria: é o pagamento da
+   * fatura. `estorno`, `impostos`, `parcelado` e `encargos` aparecem e podem
+   * receber compras — a lista já esteve mais curta que isso, e o custo era não
+   * haver como mandar um "IOF de compra internacional" para `impostos`.
    */
   async listCategories(): Promise<CategorySummary[]> {
     const [counts, created] = await Promise.all([
       this.purchaseModel
         .aggregate<{ _id: string; count: number }>([
-          { $match: { category: { $nin: PROTECTED_CATEGORIES as string[] } } },
+          { $match: { category: { $ne: PAYMENT_CATEGORY } } },
           { $group: { _id: '$category', count: { $sum: 1 } } },
         ])
         .exec(),
@@ -64,10 +65,8 @@ export class CategoryService {
   async createCategory({ name }: CreateCategoryDto): Promise<CategorySummary> {
     const clean = name.trim();
     if (clean === '') throw new ConflictException('A categoria precisa de um nome.');
-    if (isProtectedCategory(clean)) {
-      throw new ConflictException(
-        `"${clean}" descreve o tipo da transação, não onde se gastou, e não pode receber compras.`,
-      );
+    if (isReservedCategory(clean)) {
+      throw new ConflictException(`"${clean}" é o pagamento da fatura, não uma categoria de gasto.`);
     }
 
     const existing = await this.findCategoryByName(clean);
@@ -88,8 +87,8 @@ export class CategoryService {
   async renameCategory(from: string, { name }: RenameCategoryDto): Promise<CategorySummary> {
     const to = name.trim();
     if (to === '') throw new ConflictException('A categoria precisa de um nome.');
-    if (isProtectedCategory(from) || isProtectedCategory(to)) {
-      throw new ConflictException('Categorias de tipo de transação não são renomeáveis.');
+    if (isReservedCategory(from) || isReservedCategory(to)) {
+      throw new ConflictException('O pagamento da fatura não é uma categoria renomeável.');
     }
     // Só o nome idêntico é no-op. Trocar apenas a caixa — "casa" para "Casa" —
     // é uma renomeação de verdade, e comparar normalizado a engoliria em
@@ -158,9 +157,9 @@ export class CategoryService {
     const category = dto.category.trim();
 
     if (value === '') throw new ConflictException('A regra precisa de um título ou trecho.');
-    if (isProtectedCategory(category)) {
+    if (isReservedCategory(category)) {
       throw new ConflictException(
-        `"${category}" descreve o tipo da transação: uma regra apontando para lá seria ignorada.`,
+        `"${category}" é o pagamento da fatura: uma regra apontando para lá somaria a fatura ao gasto.`,
       );
     }
 

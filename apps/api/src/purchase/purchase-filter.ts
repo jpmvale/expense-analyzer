@@ -1,11 +1,6 @@
+import { NON_SPENDING_CATEGORIES, PAYMENT_CATEGORY } from '@expense/categorization';
 import type { FilterQuery } from 'mongoose';
 import type { PurchaseDocument } from '../schemas/purchase.schema';
-
-/**
- * O extractor grava os pagamentos da fatura como compras de categoria `payment`.
- * Eles entram no cálculo do que foi pago no mês, mas nunca contam como gasto.
- */
-export const PAYMENT_CATEGORY = 'payment';
 
 /** O formato que o controller entrega; casado estruturalmente com o DTO. */
 export interface PurchaseFilterInput {
@@ -56,14 +51,18 @@ export function buildPurchaseFilter(input: PurchaseFilterInput): FilterQuery<Pur
   // Sem corte por valor: estornos vêm negativos e precisam aparecer aqui, senão
   // este endpoint e o /purchase/bill discordam do total do mês — um lista só o
   // que foi gasto, o outro soma o que foi gasto menos o que voltou.
+  //
+  // Encargos saem junto com o pagamento pelo mesmo motivo: os dois ficam fora do
+  // total das faturas, e deixá-los entrar aqui faria as duas telas discordarem.
   const query: FilterQuery<PurchaseDocument> = {
-    category: { $ne: PAYMENT_CATEGORY },
+    category: { $nin: NON_SPENDING_CATEGORIES },
   };
 
   if (input.category) {
-    // Escolher categorias substitui o `$ne` acima, então o `payment` precisa ser
-    // descartado aqui também — senão `?category=payment` devolve os pagamentos,
-    // que este endpoint promete nunca listar.
+    // Escolher categorias substitui o `$nin` acima. `payment` continua fora em
+    // qualquer caso — este endpoint promete nunca listar pagamento —, mas
+    // `encargos` passa a ser pedível: juros e multa são coisas que o usuário
+    // quer poder olhar de perto, contanto que não entrem no total por acidente.
     query.category = {
       $in: input.category
         .split(',')

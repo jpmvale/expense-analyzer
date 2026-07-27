@@ -1,5 +1,5 @@
 import type { CategoryRule, PurchaseStore } from '@expense/categorization';
-import { PROTECTED_CATEGORIES } from '@expense/categorization';
+import { PAYMENT_CATEGORY } from '@expense/categorization';
 import { Collection, MongoClient } from 'mongodb';
 import { config } from './config';
 import { Bill } from './interfaces/bill';
@@ -71,12 +71,12 @@ export async function backfillSourceCategory(
  * Mongoose; as duas obedecem ao mesmo contrato, e a decisão de qual título vai
  * para qual categoria fica inteira no pacote de categorização.
  *
- * O guard por `sourceCategory` — e não por `category` — é o que protege estorno,
- * imposto, parcelamento e pagamento: `category` já pode ter sido sobrescrita numa
- * passada anterior, `sourceCategory` não muda nunca.
+ * Fora do alcance das regras fica só o pagamento da fatura. O filtro é por
+ * `sourceCategory` e não por `category` porque `category` já pode ter sido
+ * reescrita numa passada anterior — `sourceCategory` não muda nunca.
  */
 export function createPurchaseStore(purchases: Collection<Purchase>): PurchaseStore {
-  const unprotected = { sourceCategory: { $nin: PROTECTED_CATEGORIES as string[] } };
+  const unprotected = { sourceCategory: { $ne: PAYMENT_CATEGORY } };
 
   return {
     async distinctTitles() {

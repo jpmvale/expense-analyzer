@@ -9,8 +9,21 @@ function range(value: unknown): { gte: string; lt: string } {
 }
 
 describe('buildPurchaseFilter', () => {
-  it('exclui pagamentos por padrão', () => {
-    assert.deepEqual(buildPurchaseFilter({}).category, { $ne: 'payment' });
+  // Os dois que ficam fora do total das faturas precisam ficar fora daqui também,
+  // senão as duas telas mostram números diferentes para o mesmo mês.
+  it('exclui pagamentos e encargos por padrão', () => {
+    assert.deepEqual(buildPurchaseFilter({}).category, { $nin: ['payment', 'encargos'] });
+  });
+
+  // Encargo é olhável de perto; pagamento, não. `?category=encargos` é como o
+  // usuário chega a juros e multa sem que eles voltem para o total por acidente.
+  it('deixa pedir encargos explicitamente, mas nunca pagamento', () => {
+    assert.deepEqual(buildPurchaseFilter({ category: 'encargos' }).category, {
+      $in: ['encargos'],
+    });
+    assert.deepEqual(buildPurchaseFilter({ category: 'payment,encargos' }).category, {
+      $in: ['encargos'],
+    });
   });
 
   // Regressão: um `amount: { $gt: 0 }` escondia os estornos aqui, enquanto o

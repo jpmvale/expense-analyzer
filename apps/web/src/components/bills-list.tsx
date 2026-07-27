@@ -105,6 +105,9 @@ export function BillsList({ bills, composition }: { bills: Bill[]; composition: 
                 </span>
                 <span className="block text-xs text-muted-foreground">
                   {bill.frequency} compras
+                  {/* Marca o mês que teve juros sem precisar abrir 95 linhas
+                      para descobrir quais foram os três. */}
+                  {bill.charges !== 0 && <span className="text-destructive"> · encargos</span>}
                 </span>
               </span>
 
@@ -144,6 +147,20 @@ export function BillsList({ bills, composition }: { bills: Bill[]; composition: 
                   <span>
                     Categorias: <span className="tabular text-foreground">{breakdown.length}</span>
                   </span>
+                  {/*
+                   * Encargos só aparecem quando existem, e aparecem aqui e não
+                   * ao lado do total porque não são gasto: são juros, multa e
+                   * saldo rolado, que a fatura cobra e o consumo não explica.
+                   * Somá-los ao total responderia "quanto você gastou" com
+                   * dinheiro que ninguém gastou; escondê-los faria a fatura não
+                   * fechar com o extrato do banco.
+                   */}
+                  {bill.charges !== 0 && (
+                    <span>
+                      Encargos:{' '}
+                      <span className="tabular text-destructive">{currency(bill.charges)}</span>
+                    </span>
+                  )}
                 </div>
 
                 <ul className="space-y-1.5 pl-7">

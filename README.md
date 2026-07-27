@@ -28,7 +28,8 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | **Compras** | Lista filtrável por **categoria**, **título** (busca parcial) e **mês da fatura**, com total, quantidade e ticket médio. Tabela ordenável e paginada. |
 | **Gráficos** | Gasto por mês e por categoria, em barras, acompanhando os filtros aplicados. |
 | **Visão geral** | A home: última fatura fechada com a variação contra o mês anterior, média dos doze meses anteriores, total do ano e a composição do mês. Parcelas já lançadas em faturas futuras aparecem à parte, fora dos agregados. |
-| **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês, com o fundo da célula proporcional ao peso. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. |
+| **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês, com o fundo da célula proporcional ao peso. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. Meses com juros ou multa vêm marcados, e o valor aparece à parte do gasto. |
+| **Encargo ≠ gasto** | Juros, multa e saldo rolado saem do total gasto e ganham linha própria. Somá-los respondia "quanto você gastou" com dinheiro que ninguém gastou — [detalhes abaixo](#gasto-e-encargo-não-são-a-mesma-coisa). |
 | **API** | REST documentada em OpenAPI/Swagger, com validação dos filtros. |
 
 > **Sobre "outros".** Em julho de 2024 o emissor parou de classificar e passou a carimbar `outros`
@@ -158,12 +159,42 @@ Da maior prioridade para a menor. A primeira que responde decide:
 
 | # | Origem | Por quê nessa posição |
 | --- | --- | --- |
-| 1 | **Código interno do emissor** (`reversal_*`, `tax_*`, `bnpl_*`) | Descreve o **tipo da transação**, não o estabelecimento. Uma regra sua sobre onde gastou não pode transformar um estorno em gasto — isso desmontaria o total do mês. Vale também para `payment`. |
+| 1 | **`payment`** | Não é categoria: é o pagamento da fatura. É a única coisa que nenhuma regra alcança, nos dois sentidos — uma regra que trouxesse um pagamento para "casa" somaria a fatura inteira como se fosse consumo. |
 | 2 | **A sua regra** | É o ponto de discordar do emissor. Ganha até da categoria que veio no CSV: se você disse que `Mercadolivre*Mercadol` é mercado livre, não interessa que a fatura diga "eletrônicos". |
-| 3 | **Categoria do CSV**, quando diz alguma coisa | `outros` não diz. |
-| 4 | **Herança por título** | O mesmo título já categorizado em outra fatura. Vence a categoria mais frequente; no empate, a mais recente. |
-| 5 | **Palavra-chave** (`uber` → transporte, `ifood` → restaurante) | O piso para uma base nova não começar inteira em `outros`. Regras `contains` cobrem o mesmo terreno sem mexer no código. |
-| 6 | `outros` | Vira item da tela *Sem categoria*. |
+| 3 | **Código interno do emissor** (`reversal_*`, `tax_*`, `bnpl_*`) | Traduzido para `estorno`, `impostos` e `parcelado`. São rótulos comuns: entram no total como qualquer categoria e você pode reclassificá-los. |
+| 4 | **Categoria do CSV**, quando diz alguma coisa | `outros` não diz. |
+| 5 | **Herança por título** | O mesmo título já categorizado em outra fatura. Vence a categoria mais frequente; no empate, a mais recente. |
+| 6 | **Palavra-chave** (`uber` → transporte, `ifood` → restaurante, `saldo em atraso` → encargos) | O piso para uma base nova não começar inteira em `outros`. Regras `contains` cobrem o mesmo terreno sem mexer no código. |
+| 7 | `outros` | Vira item da tela *Sem categoria*. |
+
+> **`estorno`, `impostos` e `parcelado` já foram intocáveis, e não deviam ser.** O argumento era que
+> uma regra apontando para eles quebraria o total do mês — não quebra: os três somam como qualquer
+> categoria, e relabelar muda a composição, não o total. Quem quebra o total é `payment`, que fica de
+> fora dele. O preço da proteção a mais era concreto: as compras vindas de `bnpl_*` ficavam presas em
+> `parcelado` — que diz **como** se pagou, não **onde** se gastou — e não havia como mandar um
+> "IOF de compra internacional" para `impostos`.
+
+### Gasto e encargo não são a mesma coisa
+
+Duas categorias ficam **fora do total gasto**:
+
+- **`payment`** — o pagamento da fatura. Nunca foi gasto.
+- **`encargos`** — juros, multa, saldo rolado e o IOF que o atraso gera. É o custo de financiar, não
+  consumo. Somá-los respondia "quanto você gastou" com dinheiro que ninguém gastou: no histórico de
+  referência, um único `Saldo em atraso` de R$ 10.023 em três linhas pesava mais que qualquer compra
+  do ano, escondido dentro de `outros`. Em um dos meses, o encargo era **maior que o gasto**.
+
+Ficar fora do total não é sumir: `/purchase/bill` devolve `charges` por mês, a tela de Faturas marca
+os meses que tiveram encargo, e `GET /purchase?category=encargos` lista os lançamentos. Só `payment`
+é invisível de verdade.
+
+O IOF de uma compra internacional **não** é encargo — é imposto sobre um gasto que aconteceu, e
+continua em `impostos`, dentro do total.
+
+Encargo é detectado pelo título, o que erra às vezes: uma "anuidade" pode ser mensalidade de academia,
+que é gasto de verdade. Por isso `encargos` é categoria comum, e uma regra sua tira a compra de lá.
+O outro lado dessa moeda: uma regra larga demais pode arrastar encargos de volta para o total sem
+querer — `contains "IOF de"` pega também o "IOF de atraso".
 
 ### As suas regras
 
@@ -261,12 +292,13 @@ Documentação interativa em `http://localhost:3000/docs`.
 
 ### `GET /purchase`
 
-Lista as compras (excluindo pagamentos) com os agregados do conjunto filtrado. Estornos entram com
-valor negativo e abatem a soma — é o que faz este endpoint bater com o total de `/purchase/bill`.
+Lista as compras com os agregados do conjunto filtrado. Pagamentos e encargos ficam de fora — são as
+duas coisas que `/purchase/bill` também tira do total, e deixá-los entrar aqui faria as duas telas
+discordarem do mesmo mês. Estornos, ao contrário, entram com valor negativo e abatem a soma.
 
 | Query param | Exemplo | Efeito |
 | --- | --- | --- |
-| `category` | `supermercado,transporte` | Uma ou mais categorias, separadas por vírgula |
+| `category` | `supermercado,transporte` | Uma ou mais categorias, separadas por vírgula. `encargos` só aparece se for pedido assim; `payment`, nunca |
 | `title` | `uber` | Busca parcial, sem diferenciar maiúsculas |
 | `date` | `2024-03-15` | Mês da **data da compra**. Qualquer dia serve — o filtro cobre o mês inteiro |
 | `month` | `2024-03` | Mês da **fatura** em que a compra apareceu |
@@ -292,8 +324,9 @@ Uma entrada por mês de referência, em ordem cronológica.
 {
   "month": "2025-02",
   "valuePaid": 12150.23,        // a linha de categoria `payment` do mês
-  "total": 12150.23,            // gastos menos estornos, sem o pagamento
-  "frequency": 37,              // número de compras, sem contar o pagamento
+  "total": 12150.23,            // gastos menos estornos; sem o pagamento e sem os encargos
+  "charges": 141.16,            // juros, multa e saldo rolado — fora do total, mas não escondidos
+  "frequency": 37,              // número de compras, sem contar pagamento nem encargo
   "categoriesResult": [
     { "categoryByMonth": "viagem", "totalCategory": 4665.7, "frequency": 4, "percentage": 38.4 }
   ],
@@ -378,9 +411,13 @@ Para inspecionar o banco pelo navegador: `docker compose --profile tools up -d` 
 - **Regras se editam criando por cima, ou apagando.** Não há tela para listar e revisar o que já
   foi criado — `GET /category-rule` mostra, mas a interface ainda não. Também não dá para ajustar o
   trecho de uma regra `contains` na tela: ela sai do agrupamento da API ou do título clicado.
+- **Encargo é detectado por título, e só na ingestão.** Mudar a lista de palavras-chave não
+  reclassifica o que já está no banco: só vale a partir do próximo `pnpm extract`.
 - A reaplicação varre a coleção inteira a cada mudança de regra. Numa base pessoal — alguns milhares
   de compras, algumas centenas de títulos — isso some no tempo da requisição. Numa base grande,
   não sumiria.
+- **Nada avisa quando uma cobrança recorrente sobe de preço**, apesar de o histórico ter tudo o que
+  seria preciso para isso. É o que mais falta.
 - Os testes cobrem as funções puras onde moram as regras: o parser de CSV, a montagem do filtro do
   Mongo e o agrupamento dos gráficos. Não há testes de integração — o CI compensa com lint,
   typecheck, build e um smoke test da API contra um MongoDB de verdade.

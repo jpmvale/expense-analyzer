@@ -6,9 +6,9 @@ import { assignTitles, type CategoryRule } from './rules';
  * de qual título vai para qual categoria, e essa mora aqui.
  *
  * **Todo método que escreve deve ignorar as compras cuja `sourceCategory` é
- * protegida** (`PROTECTED_CATEGORIES`). A proteção é por documento, não por
- * título: o mesmo "Mercadolivre*Mercadol" aparece como compra num mês e como
- * estorno no outro, e só o segundo precisa ficar de fora.
+ * reservada** (`isReservedCategory` — na prática, o pagamento da fatura). O
+ * filtro é por documento e não por título, porque o mesmo título pode ser uma
+ * compra num mês e outra coisa no mês seguinte.
  */
 export interface PurchaseStore {
   /** Os títulos distintos da base, incluindo os que nenhuma regra alcança. */

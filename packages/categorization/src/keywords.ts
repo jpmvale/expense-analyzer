@@ -21,6 +21,18 @@ export function normalize(value: string): string {
  * terreno com `contains` e não exige mexer no código.
  */
 const KEYWORD_CATEGORIES: Record<string, string[]> = {
+  // Encargos vem primeiro: são os títulos que o próprio emissor gera, e nenhum
+  // estabelecimento se chama assim. `iof de atraso` é encargo; o IOF de uma
+  // compra internacional é imposto sobre um gasto real e não entra aqui.
+  encargos: [
+    'saldo em atraso',
+    'credito de atraso',
+    'multa de atraso',
+    'iof de atraso',
+    'juros de',
+    'encargos de',
+    'anuidade',
+  ],
   transporte: ['uber', '99app', '99 app', 'cabify', 'posto ', 'estacionamento', 'combustivel'],
   restaurante: [
     'ifood',

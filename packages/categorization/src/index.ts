@@ -1,9 +1,11 @@
 export {
   PAYMENT_CATEGORY,
   FALLBACK_CATEGORY,
-  PROTECTED_CATEGORIES,
+  FINANCING_CATEGORY,
+  NON_SPENDING_CATEGORIES,
   aliasForCategory,
-  isProtectedCategory,
+  isReservedCategory,
+  isSpendingCategory,
 } from './categories';
 export { categoryFromKeywords, normalize } from './keywords';
 export {

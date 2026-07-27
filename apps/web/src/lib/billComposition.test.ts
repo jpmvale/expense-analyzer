@@ -8,6 +8,9 @@ function bill(month: string, categories: Record<string, number>): Bill {
     month,
     valuePaid: 0,
     total: Object.values(categories).reduce((acc, value) => acc + value, 0),
+    // A composição é sobre gasto, e encargo não é gasto: ele não entra no
+    // `categoriesResult` e não tem fatia na barra empilhada.
+    charges: 0,
     frequency: Object.keys(categories).length,
     categoriesResult: Object.entries(categories).map(([categoryByMonth, totalCategory]) => ({
       categoryByMonth,

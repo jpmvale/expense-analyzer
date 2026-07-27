@@ -28,6 +28,63 @@ describe('buildBill', () => {
     assert.equal(bill.total, 300);
   });
 
+  // Juros, multa e saldo rolado são o custo de financiar, não consumo. Somados
+  // ao gasto, respondiam "quanto você gastou" com dinheiro que ninguém gastou —
+  // na base de referência, um "Saldo em atraso" de R$ 10.023 em três linhas.
+  describe('encargos', () => {
+    it('tira os encargos do total e os devolve em linha própria', () => {
+      const bill = buildBill('2025-03', [
+        purchase(500, 'supermercado'),
+        purchase(10023.13, 'encargos'),
+        purchase(201.21, 'encargos'),
+      ]);
+
+      assert.equal(bill.total, 500);
+      assert.equal(bill.charges, 10224.34);
+    });
+
+    // O crédito do atraso é o outro lado do saldo rolado: os dois se encontram
+    // dentro de `charges`, e nenhum dos dois passa pelo total.
+    it('deixa o crédito de atraso abater o encargo, longe do gasto', () => {
+      const bill = buildBill('2025-03', [
+        purchase(300, 'restaurante'),
+        purchase(10023.13, 'encargos'),
+        purchase(-5307.88, 'encargos'),
+      ]);
+
+      assert.equal(bill.total, 300);
+      assert.equal(bill.charges, 4715.25);
+    });
+
+    it('não conta encargo como compra nem como categoria do mês', () => {
+      const bill = buildBill('2025-03', [
+        purchase(500, 'supermercado'),
+        purchase(200, 'encargos'),
+      ]);
+
+      assert.equal(bill.frequency, 1);
+      assert.equal(categoria(bill, 'encargos'), undefined);
+      assert.equal(categoria(bill, 'supermercado')?.percentage, 100);
+    });
+
+    it('devolve zero quando o mês não teve encargo', () => {
+      assert.equal(buildBill('2025-03', [purchase(500, 'supermercado')]).charges, 0);
+    });
+
+    // `estorno` e `impostos` descrevem o tipo do lançamento, não a natureza do
+    // dinheiro: continuam dentro do total, o estorno abatendo com sinal negativo.
+    it('não confunde encargo com estorno ou imposto', () => {
+      const bill = buildBill('2025-03', [
+        purchase(500, 'supermercado'),
+        purchase(-30, 'estorno'),
+        purchase(2.5, 'impostos'),
+      ]);
+
+      assert.equal(bill.total, 472.5);
+      assert.equal(bill.charges, 0);
+    });
+  });
+
   describe('valor pago', () => {
     // Regressão: um `.find()` pegava só o primeiro pagamento. Em 2024-05, com
     // três, a API devolvia 1850,63 de 6533,77 — quase R$ 4,7 mil a menos.
