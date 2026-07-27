@@ -20,6 +20,8 @@ import {
   TableRow,
   TableWrapper,
 } from '@/components/ui/table';
+import { CategoryPicker } from '@/components/category-picker';
+import type { Category } from '@/interface/category';
 import type Purchase from '@/interface/purchase';
 import { capitalize, cn, currency, formatDate, formatMonth } from '@/lib/utils';
 
@@ -73,13 +75,55 @@ function Amount({ value }: { value: number }) {
   );
 }
 
+interface ReclassifyProps {
+  categories?: Category[];
+  /** Ausente deixa a categoria como rótulo. É o que mantém a tabela reusável. */
+  onReclassify?: (purchase: Purchase, category: string) => Promise<void>;
+}
+
+/**
+ * A categoria da compra, clicável quando dá para reclassificar.
+ *
+ * A correção fica onde o erro é notado. Uma categoria errada aparece lendo a
+ * tabela, e mandar o usuário até outra tela para consertá-la é o tipo de desvio
+ * que faz ninguém consertar. A regra criada aqui é sempre de título exato: quem
+ * clicou apontou uma compra, não descreveu um padrão.
+ */
+function CategoryCell({
+  purchase,
+  categories,
+  onReclassify,
+}: { purchase: Purchase } & ReclassifyProps) {
+  const label = <Badge variant="outline">{capitalize(purchase.category)}</Badge>;
+  if (!categories || !onReclassify) return label;
+
+  return (
+    <CategoryPicker
+      categories={categories}
+      value={purchase.category}
+      align="start"
+      onSelect={(category) => onReclassify(purchase, category)}
+    >
+      <button
+        type="button"
+        className="rounded-md transition-opacity hover:opacity-80"
+        aria-label={`Mudar a categoria de ${purchase.title}`}
+      >
+        {label}
+      </button>
+    </CategoryPicker>
+  );
+}
+
 export function PurchasesTable({
   purchases,
   loading,
+  categories,
+  onReclassify,
 }: {
   purchases: Purchase[];
   loading?: boolean;
-}) {
+} & ReclassifyProps) {
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(PAGE_SIZES[1]);
@@ -135,9 +179,14 @@ export function PurchasesTable({
           <li key={purchase._id} className="flex items-start justify-between gap-3 px-4 py-3">
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{purchase.title}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {capitalize(purchase.category)} · {formatDate(purchase.date)}
-              </p>
+              <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                <CategoryCell
+                  purchase={purchase}
+                  categories={categories}
+                  onReclassify={onReclassify}
+                />
+                <span>{formatDate(purchase.date)}</span>
+              </div>
             </div>
             <div className="shrink-0 text-right">
               <Amount value={purchase.amount} />
@@ -187,7 +236,11 @@ export function PurchasesTable({
                   <Amount value={purchase.amount} />
                 </TableCell>
                 <TableCell>
-                  <Badge variant="outline">{capitalize(purchase.category)}</Badge>
+                  <CategoryCell
+                    purchase={purchase}
+                    categories={categories}
+                    onReclassify={onReclassify}
+                  />
                 </TableCell>
                 <TableCell className="tabular whitespace-nowrap text-muted-foreground">
                   {formatMonth(purchase.referenceMonth)}

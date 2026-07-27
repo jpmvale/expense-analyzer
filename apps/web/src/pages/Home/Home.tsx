@@ -20,8 +20,9 @@ import { CategoryBreakdown } from '@/components/category-breakdown';
 import { MonthlySpendChart } from '@/components/charts/monthly-spend-chart';
 import { CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { listBills, listPurchases } from '../../api/client';
+import { listBills, listCategories, listPurchases, saveRule } from '../../api/client';
 import { groupByCategory, groupByMonth } from '../../lib/groupPurchases';
+import type { Category } from '../../interface/category';
 import type Purchase from '../../interface/purchase';
 
 /** Quantas categorias o painel lista. Acima disso a cauda não informa nada. */
@@ -53,6 +54,11 @@ function Home() {
   const [month, setMonth] = useState<string | null>(null);
   const debouncedTitle = useDebounced(title);
 
+  // As categorias em que dá para reclassificar. Vêm da API, e não das faturas,
+  // porque a lista inclui as que o usuário criou e ainda não usou em nada.
+  const [known, setKnown] = useState<Category[]>([]);
+  const [reload, setReload] = useState(0);
+
   const hasFilters = selectedCategories.length > 0 || title !== '' || month !== null;
 
   const clearFilters = useCallback(() => {
@@ -74,6 +80,25 @@ function Home() {
       .catch(() => {
         // As opções de filtro são um extra: falhar aqui não impede ver as compras.
       });
+  }, [reload]);
+
+  useEffect(() => {
+    listCategories()
+      .then(setKnown)
+      .catch(() => {
+        // Sem a lista, a categoria volta a ser só um rótulo — a tabela continua
+        // legível, apenas sem o atalho de reclassificar.
+      });
+  }, [reload]);
+
+  /**
+   * Reclassificar daqui cria uma regra de título exato: quem clicou apontou uma
+   * compra, não descreveu um padrão. Para pegar as variações do mesmo lugar de
+   * uma vez, a tela de "Sem categoria" oferece a regra por trecho.
+   */
+  const reclassify = useCallback(async (purchase: Purchase, category: string) => {
+    await saveRule({ kind: 'exact', value: purchase.title, category });
+    setReload((n) => n + 1);
   }, []);
 
   useEffect(() => {
@@ -97,7 +122,7 @@ function Home() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCategories, debouncedTitle, month]);
+  }, [selectedCategories, debouncedTitle, month, reload]);
 
   const pointsByMonth = useMemo(
     () =>
@@ -247,7 +272,12 @@ function Home() {
         </div>
       )}
 
-      <PurchasesTable purchases={purchases} loading={loading} />
+      <PurchasesTable
+        purchases={purchases}
+        loading={loading}
+        categories={known}
+        onReclassify={reclassify}
+      />
     </>
   );
 }

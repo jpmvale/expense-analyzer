@@ -1,6 +1,13 @@
+import { reapplyRules } from '@expense/categorization';
 import { config } from './config';
 import { Bill } from './interfaces/bill';
-import { connect, writeBill } from './mongo';
+import {
+  backfillSourceCategory,
+  connect,
+  createPurchaseStore,
+  loadRules,
+  writeBill,
+} from './mongo';
 import { fetchBillsFromDrive } from './sources/drive';
 import { fetchBillsFromDisk } from './sources/local';
 
@@ -47,7 +54,7 @@ async function main() {
 
   warnDuplicateMonths(bills);
 
-  const { client, purchases } = await connect();
+  const { client, purchases, rules } = await connect();
   try {
     console.log(`Gravando ${bills.length} faturas no MongoDB:`);
     for (const bill of bills) {
@@ -55,6 +62,18 @@ async function main() {
     }
     const total = bills.reduce((acc, bill) => acc + bill.data.length, 0);
     console.log(`Pronto: ${total} compras gravadas.`);
+
+    // Reprocessar reescreve o mês inteiro, então a classificação do usuário
+    // precisa ser recarimbada depois — é o passo que impede `pnpm extract` de
+    // desfazer o trabalho de quem categorizou na tela.
+    await backfillSourceCategory(purchases);
+    const userRules = await loadRules(rules);
+    if (userRules.length > 0) {
+      const { classified } = await reapplyRules(createPurchaseStore(purchases), userRules);
+      console.log(
+        `Regras do usuário: ${userRules.length} aplicadas, ${classified} compras classificadas.`,
+      );
+    }
   } finally {
     await client.close();
   }

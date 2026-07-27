@@ -37,6 +37,18 @@ const MERCHANTS: Array<{ title: string; category: string; min: number; max: numb
   { title: 'AIRBNB', category: 'viagem', min: 250, max: 1800 },
   { title: 'UDEMY', category: 'educação', min: 25, max: 190 },
   { title: 'ALURA', category: 'educação', min: 85, max: 120 },
+
+  // Os que caem em `outros`, para a tela de classificação abrir com trabalho de
+  // verdade nos dados de exemplo. São os títulos que o emissor exporta sem
+  // categoria e que nenhuma palavra-chave alcança: sigla de adquirente,
+  // asterisco e o nome do estabelecimento cortado ao meio. A variação de caixa
+  // em "Mercadolivre" é de propósito — é assim que a mesma loja chega em meses
+  // diferentes, e é o que a tela precisa saber agrupar.
+  { title: 'Mercadolivre*Mercadol', category: 'outros', min: 35, max: 890 },
+  { title: 'MERCADOLIVRE*MERCADOL', category: 'outros', min: 40, max: 620 },
+  { title: 'Pag*Ferreiralanches', category: 'outros', min: 18, max: 95 },
+  { title: 'Ebn*Pantanal Servicos', category: 'outros', min: 60, max: 340 },
+  { title: 'PP*JOAO BATISTA', category: 'outros', min: 25, max: 180 },
 ];
 
 /** LCG simples — determinismo sem dependência externa. */
@@ -74,6 +86,7 @@ function buildBills(): Bill[] {
           Date.UTC(referenceMonth.getUTCFullYear(), referenceMonth.getUTCMonth(), day),
         ),
         category: merchant.category,
+        sourceCategory: merchant.category,
         referenceMonth,
       });
     }
@@ -85,6 +98,7 @@ function buildBills(): Bill[] {
       amount: Math.round(total * 100) / 100,
       date: new Date(Date.UTC(referenceMonth.getUTCFullYear(), referenceMonth.getUTCMonth(), 10)),
       category: 'payment',
+      sourceCategory: 'payment',
       referenceMonth,
     });
 

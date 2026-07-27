@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
+import { CategoryModule } from './category/category.module';
 import { PurchaseModule } from './purchase/purchase.module';
 
 // O .env é único e mora na raiz do monorepo. `__dirname` é `apps/api/src` em dev
@@ -25,6 +26,7 @@ const rootEnv = resolve(__dirname, '../../../.env');
       },
     }),
     PurchaseModule,
+    CategoryModule,
   ],
   controllers: [AppController],
 })

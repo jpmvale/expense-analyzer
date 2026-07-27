@@ -14,8 +14,25 @@ export class Purchase {
   @Prop({ required: true, index: true })
   date: Date;
 
+  /**
+   * A categoria que vale: a da ingestão, ou a que uma regra do usuário
+   * sobrescreveu. É por ela que tudo filtra e agrega.
+   */
   @Prop({ required: true, index: true })
   category: string;
+
+  /**
+   * A categoria como a ingestão a resolveu, antes de qualquer regra do usuário.
+   *
+   * É o que torna a aplicação de regras reversível: apagar uma regra devolve a
+   * compra a este valor. Reaplicar é sempre `sourceCategory` mais as regras de
+   * agora — nunca o que estava gravado em `category` antes.
+   *
+   * Opcional no schema por causa das compras gravadas antes do campo existir; o
+   * backfill do extractor as preenche na primeira execução.
+   */
+  @Prop({ index: true })
+  sourceCategory: string;
 
   /** Primeiro dia (em UTC) do mês da fatura em que a compra apareceu. */
   @Prop({ required: true, index: true })

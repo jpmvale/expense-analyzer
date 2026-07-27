@@ -19,4 +19,12 @@ export class PurchaseController {
   listBills() {
     return this.purchaseService.listBills();
   }
+
+  @Get('uncategorized')
+  @ApiOperation({
+    summary: 'Os títulos ainda em "outros", agrupados e ordenados pelo dinheiro parado em cada um',
+  })
+  listUncategorized() {
+    return this.purchaseService.listUncategorized();
+  }
 }

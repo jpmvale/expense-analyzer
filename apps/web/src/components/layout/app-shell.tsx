@@ -1,4 +1,11 @@
-import { FileTextIcon, LayoutDashboardIcon, MenuIcon, ReceiptTextIcon, WalletIcon } from 'lucide-react';
+import {
+  FileTextIcon,
+  LayoutDashboardIcon,
+  MenuIcon,
+  ReceiptTextIcon,
+  TagsIcon,
+  WalletIcon,
+} from 'lucide-react';
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -10,6 +17,7 @@ const NAV = [
   { to: '/dashboard', label: 'Visão geral', Icon: LayoutDashboardIcon },
   { to: '/purchases', label: 'Compras', Icon: ReceiptTextIcon },
   { to: '/bills', label: 'Faturas', Icon: FileTextIcon },
+  { to: '/uncategorized', label: 'Sem categoria', Icon: TagsIcon },
 ];
 
 function Wordmark() {

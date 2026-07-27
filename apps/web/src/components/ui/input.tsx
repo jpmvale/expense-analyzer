@@ -1,7 +1,10 @@
-import type { InputHTMLAttributes } from 'react';
+import type { ComponentPropsWithRef } from 'react';
 import { cn } from '@/lib/utils';
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+// Com `ref` no tipo, quem monta o campo dentro de um popover consegue focá-lo na
+// abertura. No React 19 a ref é uma prop comum de componente de função, então
+// basta declará-la — não precisa de `forwardRef`.
+export function Input({ className, ...props }: ComponentPropsWithRef<'input'>) {
   return (
     <input
       className={cn(

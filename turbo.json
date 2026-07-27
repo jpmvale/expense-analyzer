@@ -22,7 +22,11 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    // As tasks abaixo dependem de `^build` porque os apps consomem
+    // `@expense/categorization` pelo `dist`. Sem isso, um `pnpm dev` num clone
+    // novo subiria contra um pacote que ainda não existe.
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     },
@@ -30,11 +34,15 @@
       "dependsOn": ["^build"]
     },
     "lint": {},
-    "test": {},
+    "test": {
+      "dependsOn": ["^build"]
+    },
     "seed": {
+      "dependsOn": ["^build"],
       "cache": false
     },
     "start": {
+      "dependsOn": ["^build"],
       "cache": false
     }
   }

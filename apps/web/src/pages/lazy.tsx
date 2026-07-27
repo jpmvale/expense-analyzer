@@ -41,3 +41,4 @@ function withSuspense(Page: ComponentType) {
 export const DashboardPage = withSuspense(lazy(() => import('./Dashboard/Dashboard')));
 export const PurchasesPage = withSuspense(lazy(() => import('./Home/Home')));
 export const BillsPage = withSuspense(lazy(() => import('./Bills/Bills')));
+export const UncategorizedPage = withSuspense(lazy(() => import('./Uncategorized/Uncategorized')));
