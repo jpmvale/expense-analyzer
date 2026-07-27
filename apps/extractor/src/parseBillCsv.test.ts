@@ -69,6 +69,66 @@ describe('parseBillCsv', () => {
       );
     });
 
+    // Regressão: a memória guardava um conjunto de títulos por categoria e
+    // devolvia a primeira que contivesse o título — um desempate arbitrário,
+    // decidido pela ordem de leitura. "Amazon" tem 144 lançamentos como
+    // eletrônicos e 1 como vestuário; o único bastava para vencer se viesse antes.
+    it('vence a categoria mais frequente, não a primeira vista', () => {
+      const memory = new CategoryMemory();
+      parse(
+        [
+          'date,category,title,amount',
+          '2025-03-01,vestuário,AMAZON,50', // minoria, mas vem primeiro
+          '2025-03-02,eletrônicos,AMAZON,50',
+          '2025-03-03,eletrônicos,AMAZON,50',
+        ].join('\n'),
+        memory,
+      );
+      const [purchase] = parse('date,category,title,amount\n2025-04-02,,AMAZON,80', memory);
+
+      assert.equal(purchase.category, 'eletrônicos');
+    });
+
+    it('conta as ocorrências ao longo de várias faturas', () => {
+      const memory = new CategoryMemory();
+      parse('date,category,title,amount\n2025-01-02,supermercado,LOJA K,10', memory);
+      parse('date,category,title,amount\n2025-02-02,casa,LOJA K,10', memory);
+      parse('date,category,title,amount\n2025-03-02,casa,LOJA K,10', memory);
+      const [purchase] = parse('date,category,title,amount\n2025-04-02,,LOJA K,10', memory);
+
+      assert.equal(purchase.category, 'casa');
+    });
+
+    // Empate é real: "Mercadolivre*Mercadol" tem uma ocorrência em cada uma de
+    // três categorias. Vence a mais recente — se o estabelecimento mudou de
+    // natureza, a classificação de agora vale mais que a antiga.
+    it('desempata pela ocorrência mais recente', () => {
+      const memory = new CategoryMemory();
+      parse('date,category,title,amount\n2024-01-02,supermercado,LOJA M,10', memory);
+      parse('date,category,title,amount\n2025-06-02,restaurante,LOJA M,10', memory);
+      const [purchase] = parse('date,category,title,amount\n2025-07-02,,LOJA M,10', memory);
+
+      assert.equal(purchase.category, 'restaurante');
+    });
+
+    it('a recência não atropela a frequência', () => {
+      const memory = new CategoryMemory();
+      parse(
+        [
+          'date,category,title,amount',
+          '2024-01-02,eletrônicos,LOJA N,10',
+          '2024-02-02,eletrônicos,LOJA N,10',
+          '2024-03-02,eletrônicos,LOJA N,10',
+        ].join('\n'),
+        memory,
+      );
+      // Uma ocorrência recente e solitária não derruba três anteriores.
+      parse('date,category,title,amount\n2025-06-02,vestuário,LOJA N,10', memory);
+      const [purchase] = parse('date,category,title,amount\n2025-07-02,,LOJA N,10', memory);
+
+      assert.equal(purchase.category, 'eletrônicos');
+    });
+
     it('compartilha a memória entre faturas de uma mesma execução', () => {
       const memory = new CategoryMemory();
       parse('date,category,title,amount\n2025-03-02,eletrônicos,KABUM,300', memory);

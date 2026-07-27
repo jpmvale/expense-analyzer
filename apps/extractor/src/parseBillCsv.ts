@@ -79,24 +79,49 @@ export function aliasForCategory(category: string): string | null {
  * Memória de categorização compartilhada entre as faturas de uma mesma execução:
  * quando um título aparece categorizado em qualquer mês, os meses em que ele veio
  * sem categoria herdam a mesma. É o que faz o histórico ficar consistente.
+ *
+ * Um mesmo estabelecimento pode ter recebido categorias diferentes ao longo dos
+ * anos: no histórico real, "Amazon" aparece 35 vezes como eletrônicos e 1 como
+ * vestuário. Guardar só o primeiro visto entregava o desempate à ordem de
+ * leitura, e uma ocorrência solitária derrubava trinta e cinco. Por isso a
+ * memória conta as ocorrências e devolve a mais frequente.
+ *
+ * O empate é real — "Mercadolivre*Mercadol" tem uma ocorrência de cada em três
+ * categorias diferentes — e quem vence é a **mais recente**: se um
+ * estabelecimento mudou de natureza, a classificação de agora vale mais que a de
+ * 2019. Isso funciona porque as faturas são lidas em ordem cronológica, o que os
+ * dois `sources` garantem explicitamente.
  */
 export class CategoryMemory {
-  private readonly titlesByCategory = new Map<string, Set<string>>();
+  private readonly countsByTitle = new Map<string, Map<string, number>>();
 
   remember(category: string, title: string): void {
-    const titles = this.titlesByCategory.get(category);
-    if (titles) {
-      titles.add(title);
-    } else {
-      this.titlesByCategory.set(category, new Set([title]));
-    }
+    const counts = this.countsByTitle.get(title) ?? new Map<string, number>();
+    const next = (counts.get(category) ?? 0) + 1;
+
+    // Reinserir move a chave para o fim do Map: a ordem de iteração passa a ser
+    // "quem foi visto por último", que é o critério de desempate do lookup.
+    counts.delete(category);
+    counts.set(category, next);
+    this.countsByTitle.set(title, counts);
   }
 
   lookup(title: string): string | undefined {
-    for (const [category, titles] of this.titlesByCategory) {
-      if (titles.has(title)) return category;
+    const counts = this.countsByTitle.get(title);
+    if (!counts) return undefined;
+
+    let best: string | undefined;
+    let bestCount = 0;
+
+    for (const [category, count] of counts) {
+      // `>=` faz o empate cair para o último da ordem, isto é, o mais recente.
+      if (count >= bestCount) {
+        best = category;
+        bestCount = count;
+      }
     }
-    return undefined;
+
+    return best;
   }
 }
 
