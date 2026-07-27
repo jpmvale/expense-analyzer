@@ -1,5 +1,132 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@import 'tailwindcss';
+
+/*
+ * Design tokens do Expense Analyzer.
+ *
+ * Base neutra fria com sotaque esmeralda — um painel de finanças precisa que a
+ * cor signifique alguma coisa (categoria, variação, sinal do valor), então o
+ * cromatismo do chrome é deliberadamente baixo: quase tudo é neutro, e a cor
+ * fica reservada para o dado.
+ *
+ * O escuro é o padrão (`:root`) porque é como a app nasce; o claro é a exceção
+ * declarada em `:root[data-theme="light"]`. O alternador escreve `data-theme` no
+ * <html> — veja `lib/theme.ts`.
+ */
+
+:root {
+  --background: #09090b;
+  --foreground: #f4f4f5;
+
+  --card: #101013;
+  --card-foreground: #f4f4f5;
+  --popover: #141418;
+  --popover-foreground: #f4f4f5;
+
+  --primary: #34d399;
+  --primary-foreground: #04231a;
+
+  --secondary: #1b1b1f;
+  --secondary-foreground: #e4e4e7;
+  --muted: #17171a;
+  --muted-foreground: #8b8b95;
+  --accent: #1f1f24;
+  --accent-foreground: #f4f4f5;
+
+  --destructive: #f87171;
+  --destructive-foreground: #1f0606;
+  --positive: #34d399;
+
+  --border: #232327;
+  --input: #2a2a2f;
+  --ring: #34d399;
+
+  --radius: 0.75rem;
+}
+
+:root[data-theme='light'] {
+  --background: #fbfbfc;
+  --foreground: #18181b;
+
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+
+  --primary: #059669;
+  --primary-foreground: #ffffff;
+
+  --secondary: #f4f4f5;
+  --secondary-foreground: #3f3f46;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f1f1f3;
+  --accent-foreground: #18181b;
+
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --positive: #059669;
+
+  --border: #e4e4e7;
+  --input: #d8d8dd;
+  --ring: #059669;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-positive: var(--positive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  /* Valores monetários em tabular figures: as colunas alinham na vírgula. */
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  html[data-theme='light'] {
+    color-scheme: light;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Dinheiro e datas alinhados por coluna, sem largura variável por dígito. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 }

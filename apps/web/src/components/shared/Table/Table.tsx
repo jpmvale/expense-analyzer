@@ -79,12 +79,14 @@ export default function StickyHeadTable<T extends object>({
           <TableBody>
             {sortedRows
               .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+              // O zebrado vem do tema, não de cores fixas: com fundo escuro, o
+              // `#f2f2f2`/branco de antes deixava texto claro sobre claro.
               .map((row, index) => (
                 <TableRow
                   hover
                   tabIndex={-1}
                   key={rowKey(row, index)}
-                  style={{ backgroundColor: index % 2 === 0 ? '#f2f2f2' : 'white' }}
+                  sx={{ '&:nth-of-type(odd)': { backgroundColor: 'action.hover' } }}
                 >
                   {columns.map((column) => (
                     <TableCell key={column.id} align={column.align}>

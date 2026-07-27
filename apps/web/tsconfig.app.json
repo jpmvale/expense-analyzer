@@ -22,7 +22,14 @@
     "noFallthroughCasesInSwitch": true,
 
     "composite": true,
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo"
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+
+    /* `@/` → src/, o alias que os componentes do shadcn assumem. Espelhado no
+       `resolve.alias` do vite.config.ts, que é quem resolve em tempo de build. */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src"]
 }

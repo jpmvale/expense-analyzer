@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -7,8 +8,14 @@ import { defineConfig } from 'vite';
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   envDir: repoRoot,
+  resolve: {
+    // `@/` aponta para src/ — é o alias que os componentes do shadcn assumem.
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   server: {
     port: 5173,
     strictPort: false,
