@@ -145,7 +145,16 @@ function Home() {
         </Card>
       )}
 
-      <Card className="mb-4 p-3 sm:p-4">
+      {/*
+       * A barra acompanha a rolagem a partir de `lg`, onde os filtros cabem numa
+       * linha só. O ciclo desta tela é buscar, ler a tabela e refinar a busca —
+       * com a barra parada no topo, refinar exigia subir e descer a página.
+       *
+       * Abaixo de `lg` ela fica parada: os filtros quebram em duas ou três linhas
+       * e comeriam metade da tela do celular. O cabeçalho do app tem 3.5rem, daí
+       * o `top-14`.
+       */}
+      <Card className="mb-4 p-3 sm:p-4 lg:sticky lg:top-14 lg:z-30 lg:shadow-lg">
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto]">
           <CategoryFilter
             options={categories}
