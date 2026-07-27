@@ -10,7 +10,8 @@ const BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000').repla
 export interface PurchaseFilters {
   categories?: string[];
   title?: string;
-  month?: Date | null;
+  /** Mês da fatura em `YYYY-MM` — o mesmo formato que a API recebe. */
+  month?: string | null;
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -28,11 +29,9 @@ export function buildPurchasesQuery({ categories, title, month }: PurchaseFilter
   if (month) {
     // O seletor da tela se chama "Fatura", então filtra pelo mês da fatura
     // (`month`) e não pela data da compra (`date`) — os dois campos existem na
-    // API e são diferentes de propósito. `YYYY-MM` também evita a viagem de ida
-    // e volta por um Date, onde o fuso já mordeu antes.
-    const year = month.getFullYear();
-    const monthNumber = String(month.getMonth() + 1).padStart(2, '0');
-    params.set('month', `${year}-${monthNumber}`);
+    // API e são diferentes de propósito. `YYYY-MM` trafega como string do
+    // seletor até a query, sem passar por um Date, onde o fuso já mordeu antes.
+    params.set('month', month);
   }
   const query = params.toString();
   return query ? `?${query}` : '';

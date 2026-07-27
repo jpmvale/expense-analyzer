@@ -1,132 +1,101 @@
-import { Alert, Box, Button, Grid, Paper, SelectChangeEvent, Stack } from '@mui/material';
-import { styled } from '@mui/material/styles';
-import type { Dayjs } from 'dayjs';
-import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
+import {
+  AlertCircleIcon,
+  CalculatorIcon,
+  CoinsIcon,
+  ReceiptTextIcon,
+  SearchIcon,
+  XIcon,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CategoryFilter } from '@/components/filters/category-filter';
+import { MonthFilter } from '@/components/filters/month-filter';
 import { PageHeader } from '@/components/layout/app-shell';
-import { listPurchases } from '../../api/client';
+import { PurchasesTable } from '@/components/purchases-table';
+import { StatCard } from '@/components/stat-card';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { currency } from '@/lib/utils';
+import { listBills, listPurchases } from '../../api/client';
 import { BarChart } from '../../components/shared/BarChart';
-import { MonthPicker } from '../../components/shared/MonthPicker';
-import { MultiSelectInput } from '../../components/shared/MultiSelectInput';
 import { PieChart } from '../../components/shared/PieChart';
-import { SearchInput } from '../../components/shared/SearchInput';
-import { Table } from '../../components/shared/Table';
-import ChartData from '../../interface/chartData';
-import { monthEnum } from '../../interface/monthEnum';
-import Purchase from '../../interface/purchase';
-import { Column } from '../../interface/tableColumn';
 import { groupByCategory, groupByMonth } from '../../lib/groupPurchases';
+import type Purchase from '../../interface/purchase';
 
-const months: monthEnum = {
-  '01': 'JAN',
-  '02': 'FEV',
-  '03': 'MAR',
-  '04': 'ABR',
-  '05': 'MAI',
-  '06': 'JUN',
-  '07': 'JUL',
-  '08': 'AGO',
-  '09': 'SET',
-  '10': 'OUT',
-  '11': 'NOV',
-  '12': 'DEZ',
-};
-
-const currency = (value: number) =>
-  value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-const formatDateToBrazilianPattern = (dateString: string) => {
-  const [year, month, day] = dateString.split('T')[0].split('-');
-  return `${day}/${month}/${year}`;
-};
-
-const columns: Column<Purchase>[] = [
-  { id: 'title', label: 'Título', minWidth: 170 },
-  { id: 'amount', label: 'Valor', minWidth: 70, format: currency },
-  { id: 'category', label: 'Categoria', minWidth: 70 },
-  {
-    id: 'referenceMonth',
-    label: 'Fatura',
-    minWidth: 50,
-    formatMonth: (value: string) => {
-      const [year, month] = value.split('T')[0].split('-');
-      return `${months[month]}/${year.slice(2)}`;
-    },
-  },
-  {
-    id: 'date',
-    label: 'Data',
-    minWidth: 80,
-    formatDate: formatDateToBrazilianPattern,
-  },
-];
-
-const Item = styled(Paper)(({ theme }) => ({
-  backgroundColor: theme.palette.mode === 'dark' ? '#1A2027' : '#fff',
-  ...theme.typography.body2,
-  padding: theme.spacing(1),
-  textAlign: 'center',
-  color: theme.palette.text.secondary,
-}));
+/** Espera o usuário parar de digitar antes de consultar a API. */
+function useDebounced<T>(value: T, delay = 350): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
 
 function Home() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [summary, setSummary] = useState<{ total?: number; average?: number; sum?: number }>({});
-  const [uniqueCategories, setUniqueCategories] = useState<string[]>([]);
-
-  const [categoriesInput, setCategoriesInput] = useState<string[]>([]);
-  const [titleInput, setTitleInput] = useState('');
-  const [monthInput, setMonthInput] = useState<Dayjs | null>(null);
-
-  const [dataByMonth, setDataByMonth] = useState<ChartData[]>([]);
-  const [dataByCategory, setDataByCategory] = useState<ChartData[]>([]);
-
+  const [summary, setSummary] = useState({ total: 0, sum: 0, average: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const handleCategoryChange = (event: SelectChangeEvent<string[]>) => {
-    const { value } = event.target;
-    // No autofill o valor chega serializado como string.
-    setCategoriesInput(typeof value === 'string' ? value.split(',') : value);
-  };
+  // As opções de filtro vêm das faturas, não do resultado filtrado: antes a lista
+  // de categorias encolhia conforme se filtrava, e não dava para voltar atrás.
+  const [months, setMonths] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
 
-  const handleTextSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setTitleInput(event.target.value);
-  };
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [title, setTitle] = useState('');
+  const [month, setMonth] = useState<string | null>(null);
+  const debouncedTitle = useDebounced(title);
 
-  const fetchData = useCallback(
-    async (month: Dayjs | null, title: string, categories: string[]) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await listPurchases({
-          categories,
-          title,
-          month: month ? month.toDate() : null,
-        });
-        setPurchases(data.purchases ?? []);
-        setSummary({ total: data.total, average: data.average, sum: data.sum });
-        setUniqueCategories([...new Set((data.purchases ?? []).map((p) => p.category))]);
-        setDataByMonth(groupByMonth(data.purchases ?? []));
-        setDataByCategory(groupByCategory(data.purchases ?? []));
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
+  const hasFilters = selectedCategories.length > 0 || title !== '' || month !== null;
 
-  const clearFilters = () => {
-    setCategoriesInput([]);
-    setTitleInput('');
-    setMonthInput(null);
-    void fetchData(null, '', []);
-  };
+  const clearFilters = useCallback(() => {
+    setSelectedCategories([]);
+    setTitle('');
+    setMonth(null);
+  }, []);
 
   useEffect(() => {
-    void fetchData(null, '', []);
-  }, [fetchData]);
+    listBills()
+      .then((bills) => {
+        setMonths(bills.map((bill) => bill.month));
+        const found = new Set<string>();
+        for (const bill of bills) {
+          for (const { categoryByMonth } of bill.categoriesResult) found.add(categoryByMonth);
+        }
+        setCategories([...found].sort((a, b) => a.localeCompare(b, 'pt-BR')));
+      })
+      .catch(() => {
+        // As opções de filtro são um extra: falhar aqui não impede ver as compras.
+      });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    listPurchases({ categories: selectedCategories, title: debouncedTitle, month })
+      .then((data) => {
+        if (cancelled) return;
+        setPurchases(data.purchases ?? []);
+        setSummary({ total: data.total, sum: data.sum, average: data.average });
+      })
+      .catch((cause: Error) => {
+        if (!cancelled) setError(cause.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCategories, debouncedTitle, month]);
+
+  const dataByMonth = useMemo(() => groupByMonth(purchases), [purchases]);
+  const dataByCategory = useMemo(() => groupByCategory(purchases), [purchases]);
 
   return (
     <>
@@ -134,72 +103,82 @@ function Home() {
         title="Compras"
         description="Todos os lançamentos, filtráveis por categoria, título e fatura."
       />
-      <Box>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            Não foi possível carregar as compras: {error}. A API está no ar em{' '}
-            {import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}?
-          </Alert>
-        )}
 
-        <Grid container spacing={1}>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <Item>
-              <MultiSelectInput
-                name="Categorias"
-                items={uniqueCategories}
-                setCategory={handleCategoryChange}
-                category={categoriesInput}
-              />
-            </Item>
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <Item>
-              <SearchInput value={titleInput} onChange={handleTextSearchChange} />
-            </Item>
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <Item>
-              <MonthPicker value={monthInput} onChange={setMonthInput} />
-            </Item>
-          </Grid>
+      {error && (
+        <Card className="mb-4 flex items-start gap-3 border-destructive/40 p-4 text-sm">
+          <AlertCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
+          <div>
+            <p className="font-medium">Não foi possível carregar as compras.</p>
+            <p className="mt-0.5 text-muted-foreground">{error}</p>
+          </div>
+        </Card>
+      )}
 
-          <Grid size={12}>
-            <Item>
-              <Stack direction="row" spacing={1} justifyContent="center" sx={{ mb: 1 }}>
-                <Button
-                  variant="contained"
-                  onClick={() => void fetchData(monthInput, titleInput, categoriesInput)}
-                >
-                  Buscar
-                </Button>
-                <Button variant="outlined" onClick={clearFilters}>
-                  Limpar filtros
-                </Button>
-              </Stack>
-              <h2>
-                <strong>
-                  Total: {currency(summary.sum ?? 0)} | Compras: {summary.total ?? 0} | Média:{' '}
-                  {currency(summary.average ?? 0)}
-                </strong>
-              </h2>
-            </Item>
-          </Grid>
-
-          {!loading && (
-            <>
-              <Grid size={{ xs: 12, lg: 4 }}>
-                <Table rows={purchases} columns={columns} />
-              </Grid>
-              <Grid size={{ xs: 12, lg: 8 }}>
-                {/* Filtrando um mês só, o gráfico por mês teria uma barra só. */}
-                {!monthInput && <BarChart chartData={dataByMonth} height={400} />}
-                <PieChart chartData={dataByCategory} height={500} />
-              </Grid>
-            </>
+      <Card className="mb-4 p-3 sm:p-4">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto]">
+          <CategoryFilter
+            options={categories}
+            value={selectedCategories}
+            onChange={setSelectedCategories}
+          />
+          <div className="relative">
+            <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Buscar por título…"
+              className="pl-9"
+              aria-label="Buscar por título"
+            />
+          </div>
+          <MonthFilter months={months} value={month} onChange={setMonth} />
+          {hasFilters && (
+            <Button variant="ghost" onClick={clearFilters} className="justify-start sm:justify-center">
+              <XIcon />
+              Limpar
+            </Button>
           )}
-        </Grid>
-      </Box>
+        </div>
+      </Card>
+
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <StatCard
+          label="Total gasto"
+          value={currency(summary.sum)}
+          Icon={CoinsIcon}
+          loading={loading}
+        />
+        <StatCard
+          label="Lançamentos"
+          value={summary.total.toLocaleString('pt-BR')}
+          Icon={ReceiptTextIcon}
+          loading={loading}
+        />
+        <StatCard
+          label="Ticket médio"
+          value={currency(summary.average)}
+          Icon={CalculatorIcon}
+          loading={loading}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <PurchasesTable purchases={purchases} loading={loading} />
+
+        {/* Gráficos ainda em MUI — migram para Recharts na próxima etapa. */}
+        {!loading && purchases.length > 0 && (
+          <div className="space-y-4">
+            {!month && (
+              <Card className="p-3">
+                <BarChart chartData={dataByMonth} height={320} />
+              </Card>
+            )}
+            <Card className="p-3">
+              <PieChart chartData={dataByCategory} height={380} />
+            </Card>
+          </div>
+        )}
+      </div>
     </>
   );
 }
