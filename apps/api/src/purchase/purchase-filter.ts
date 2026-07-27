@@ -53,9 +53,11 @@ function parseYearMonth(value: string): [number, number] {
  * service, porque é aqui que moram as regras que valem a pena testar sem banco.
  */
 export function buildPurchaseFilter(input: PurchaseFilterInput): FilterQuery<PurchaseDocument> {
+  // Sem corte por valor: estornos vêm negativos e precisam aparecer aqui, senão
+  // este endpoint e o /purchase/bill discordam do total do mês — um lista só o
+  // que foi gasto, o outro soma o que foi gasto menos o que voltou.
   const query: FilterQuery<PurchaseDocument> = {
     category: { $ne: PAYMENT_CATEGORY },
-    amount: { $gt: 0 },
   };
 
   if (input.category) {

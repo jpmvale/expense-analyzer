@@ -9,10 +9,14 @@ function range(value: unknown): { gte: string; lt: string } {
 }
 
 describe('buildPurchaseFilter', () => {
-  it('exclui pagamentos e valores não positivos por padrão', () => {
-    const query = buildPurchaseFilter({});
-    assert.deepEqual(query.category, { $ne: 'payment' });
-    assert.deepEqual(query.amount, { $gt: 0 });
+  it('exclui pagamentos por padrão', () => {
+    assert.deepEqual(buildPurchaseFilter({}).category, { $ne: 'payment' });
+  });
+
+  // Regressão: um `amount: { $gt: 0 }` escondia os estornos aqui, enquanto o
+  // /purchase/bill os somava — os dois endpoints discordavam do total do mês.
+  it('não corta por valor, para os estornos aparecerem', () => {
+    assert.equal(buildPurchaseFilter({}).amount, undefined);
   });
 
   describe('filtro por data da compra', () => {

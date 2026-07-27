@@ -26,7 +26,7 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | **Categorização** | Usa a categoria do CSV quando existe. Quando não, herda de um título já categorizado em outra fatura, tenta palavras-chave (uber/99app → transporte) e cai em `outros`. |
 | **Compras** | Lista filtrável por **categoria**, **título** (busca parcial) e **mês da fatura**, com total, quantidade e ticket médio. Tabela ordenável e paginada. |
 | **Gráficos** | Gasto por mês (barras) e por categoria (pizza), acompanhando os filtros aplicados. |
-| **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês. |
+| **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. |
 | **API** | REST documentada em OpenAPI/Swagger, com validação dos filtros. |
 
 ---
@@ -168,7 +168,8 @@ Documentação interativa em `http://localhost:3000/docs`.
 
 ### `GET /purchase`
 
-Lista as compras (excluindo pagamentos) com os agregados do conjunto filtrado.
+Lista as compras (excluindo pagamentos) com os agregados do conjunto filtrado. Estornos entram com
+valor negativo e abatem a soma — é o que faz este endpoint bater com o total de `/purchase/bill`.
 
 | Query param | Exemplo | Efeito |
 | --- | --- | --- |
@@ -198,8 +199,8 @@ Uma entrada por mês de referência, em ordem cronológica.
 {
   "month": "2025-02",
   "valuePaid": 12150.23,        // a linha de categoria `payment` do mês
-  "total": 12150.23,            // soma dos gastos (sem o pagamento)
-  "frequency": 38,              // número de lançamentos
+  "total": 12150.23,            // gastos menos estornos, sem o pagamento
+  "frequency": 37,              // número de compras, sem contar o pagamento
   "categoriesResult": [
     { "categoryByMonth": "viagem", "totalCategory": 4665.7, "frequency": 4, "percentage": 38.4 }
   ],
