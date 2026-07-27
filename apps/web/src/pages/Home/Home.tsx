@@ -16,9 +16,10 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { currency } from '@/lib/utils';
+import { CategorySpendChart } from '@/components/charts/category-spend-chart';
+import { MonthlySpendChart } from '@/components/charts/monthly-spend-chart';
+import { CardHeader, CardTitle } from '@/components/ui/card';
 import { listBills, listPurchases } from '../../api/client';
-import { BarChart } from '../../components/shared/BarChart';
-import { PieChart } from '../../components/shared/PieChart';
 import { groupByCategory, groupByMonth } from '../../lib/groupPurchases';
 import type Purchase from '../../interface/purchase';
 
@@ -165,16 +166,26 @@ function Home() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         <PurchasesTable purchases={purchases} loading={loading} />
 
-        {/* Gráficos ainda em MUI — migram para Recharts na próxima etapa. */}
         {!loading && purchases.length > 0 && (
           <div className="space-y-4">
+            {/* Filtrando uma fatura só, o gráfico por mês teria uma barra só. */}
             {!month && (
-              <Card className="p-3">
-                <BarChart chartData={dataByMonth} height={320} />
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle>Gasto por mês</CardTitle>
+                </CardHeader>
+                <div className="pr-4 pb-3 pl-1">
+                  <MonthlySpendChart data={dataByMonth} height={300} />
+                </div>
               </Card>
             )}
-            <Card className="p-3">
-              <PieChart chartData={dataByCategory} height={380} />
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle>Gasto por categoria</CardTitle>
+              </CardHeader>
+              <div className="pr-4 pb-3 pl-1">
+                <CategorySpendChart data={dataByCategory} />
+              </div>
             </Card>
           </div>
         )}

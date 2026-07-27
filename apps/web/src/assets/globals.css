@@ -40,6 +40,17 @@
   --input: #2a2a2f;
   --ring: #34d399;
 
+  /*
+   * Cor das marcas dos gráficos. Deliberadamente diferente do --primary do
+   * chrome: o esmeralda da interface (#34d399) tem luminosidade 0.773, fora da
+   * banda 0.48–0.67 exigida para marcas sobre superfície escura. Este tom passa
+   * nas duas superfícies (≥3:1 de contraste), então é o mesmo valor nos dois
+   * temas — verificado com o validador de paleta, não a olho.
+   */
+  --chart-1: #059669;
+  /* Grade e eixos recuados: o dado é a figura, a grade é o fundo. */
+  --chart-grid: #232327;
+
   --radius: 0.75rem;
 }
 
@@ -69,6 +80,9 @@
   --border: #e4e4e7;
   --input: #d8d8dd;
   --ring: #059669;
+
+  --chart-1: #059669;
+  --chart-grid: #e4e4e7;
 }
 
 @theme inline {
@@ -92,6 +106,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-grid: var(--chart-grid);
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
