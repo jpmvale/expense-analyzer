@@ -22,20 +22,18 @@ export function MonthlySpendChart({
 }) {
   const data = points.map((point) => ({ ...point, label: formatMonth(point.month) }));
 
-  // Com muitos meses, rotular todos vira um borrão: mostra um a cada N.
-  const tickInterval = Math.max(0, Math.ceil(data.length / 12) - 1);
-
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
         <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
         <XAxis
           dataKey="label"
-          interval={tickInterval}
+          // Quantos rótulos cabem depende da largura, não do número de meses.
+          interval="preserveStartEnd"
+          minTickGap={28}
           tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }}
           tickLine={false}
           axisLine={{ stroke: 'var(--chart-grid)' }}
-          minTickGap={8}
         />
         <YAxis
           width={64}

@@ -51,6 +51,21 @@
   /* Grade e eixos recuados: o dado é a figura, a grade é o fundo. */
   --chart-grid: #232327;
 
+  /*
+   * Paleta categórica, usada só onde a categoria é o assunto — hoje, a
+   * composição empilhada das faturas. A ordem dos slots não é decorativa: ela
+   * maximiza a separação entre vizinhos sob daltonismo, e trocá-la degrada isso.
+   * Validada nesta superfície: todas dentro da banda e com contraste ≥3:1.
+   */
+  --cat-1: #3987e5;
+  --cat-2: #199e70;
+  --cat-3: #c98500;
+  --cat-4: #008300;
+  --cat-5: #9085e9;
+  --cat-6: #e66767;
+  /* O resto não tem identidade própria: cinza, e nunca um sétimo matiz. */
+  --cat-rest: #52525b;
+
   --radius: 0.75rem;
 }
 
@@ -83,6 +98,15 @@
 
   --chart-1: #059669;
   --chart-grid: #e4e4e7;
+
+  /* Mesmos matizes, degraus escolhidos para a superfície clara. */
+  --cat-1: #2a78d6;
+  --cat-2: #1baf7a;
+  --cat-3: #eda100;
+  --cat-4: #008300;
+  --cat-5: #4a3aa7;
+  --cat-6: #e34948;
+  --cat-rest: #a1a1aa;
 }
 
 @theme inline {
@@ -108,6 +132,13 @@
   --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
   --color-chart-grid: var(--chart-grid);
+  --color-cat-1: var(--cat-1);
+  --color-cat-2: var(--cat-2);
+  --color-cat-3: var(--cat-3);
+  --color-cat-4: var(--cat-4);
+  --color-cat-5: var(--cat-5);
+  --color-cat-6: var(--cat-6);
+  --color-cat-rest: var(--cat-rest);
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
