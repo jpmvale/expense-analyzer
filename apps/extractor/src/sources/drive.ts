@@ -40,8 +40,27 @@ async function authorize() {
     scopes: SCOPES,
     keyfilePath: config.googleCredentialsPath,
   });
-  if (client.credentials) await saveCredentials(client);
-  return client;
+
+  if (!client.credentials?.refresh_token) {
+    throw new Error(
+      'O Google não devolveu um refresh token. Revogue o acesso do app em\n' +
+        'https://myaccount.google.com/permissions e rode de novo — o refresh token\n' +
+        'só vem no primeiro consentimento.',
+    );
+  }
+
+  await saveCredentials(client);
+
+  // Relê o token recém-salvo em vez de devolver o cliente do `authenticate()`.
+  // Aquele cliente não anexa a credencial nas chamadas do googleapis, então a
+  // PRIMEIRA execução falhava com "Method doesn't allow unregistered callers"
+  // logo depois de o usuário autorizar no navegador — e só funcionava a partir
+  // da segunda, quando este mesmo caminho de token salvo passava a ser usado.
+  const reloaded = await loadSavedCredentials();
+  if (!reloaded) {
+    throw new Error(`Token salvo em ${config.googleTokenPath} mas não pôde ser lido de volta.`);
+  }
+  return reloaded;
 }
 
 export async function fetchBillsFromDrive(): Promise<Bill[]> {

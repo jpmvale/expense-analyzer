@@ -28,6 +28,32 @@ describe('buildBill', () => {
     assert.equal(bill.total, 300);
   });
 
+  describe('valor pago', () => {
+    // Regressão: um `.find()` pegava só o primeiro pagamento. Em 2024-05, com
+    // três, a API devolvia 1850,63 de 6533,77 — quase R$ 4,7 mil a menos.
+    it('soma todos os pagamentos do mês, não só o primeiro', () => {
+      const bill = buildBill('2025-03', [
+        purchase(-1850.63, 'payment'),
+        purchase(-3000, 'payment'),
+        purchase(-1683.14, 'payment'),
+        purchase(500, 'supermercado'),
+      ]);
+
+      assert.equal(bill.valuePaid, 6533.77);
+    });
+
+    // Regressão: o CSV do Nubank traz o pagamento negativo e o seed positivo, e
+    // a tela mostrava "Valor pago: -R$ 3.538,86".
+    it('é uma quantia sem sinal, venha a fonte com qual sinal vier', () => {
+      assert.equal(buildBill('2025-03', [purchase(-3538.86, 'payment')]).valuePaid, 3538.86);
+      assert.equal(buildBill('2025-03', [purchase(3538.86, 'payment')]).valuePaid, 3538.86);
+    });
+
+    it('é zero quando o mês não teve pagamento', () => {
+      assert.equal(buildBill('2025-03', [purchase(100, 'casa')]).valuePaid, 0);
+    });
+  });
+
   // Regressão: `frequency` usava o total de lançamentos, incluindo a linha de
   // pagamento — a coluna "Compras" da tela vinha sempre com uma compra a mais.
   it('conta só as compras, não o pagamento da fatura', () => {

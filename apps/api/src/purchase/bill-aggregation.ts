@@ -50,7 +50,10 @@ function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
 }
 
 export function buildBill(month: string, monthPurchases: AggregatablePurchase[]): Bill {
-  const payment = monthPurchases.find((p) => p.category === PAYMENT_CATEGORY);
+  // Todos os pagamentos do mês, não só o primeiro: há faturas pagas em duas ou
+  // três parcelas, e pegar só uma subestimava o valor pago em milhares de reais.
+  const payments = monthPurchases.filter((p) => p.category === PAYMENT_CATEGORY);
+  const paid = payments.reduce((acc, p) => acc + p.amount, 0);
 
   // Estornos vêm com valor negativo e abatem o gasto: gastou 100 e estornou 30,
   // o mês conta 70. É o que a fatura de fato cobrou, e é o que mantém este
@@ -77,7 +80,10 @@ export function buildBill(month: string, monthPurchases: AggregatablePurchase[])
 
   return {
     month,
-    valuePaid: round(payment?.amount ?? 0),
+    // O CSV do Nubank traz o pagamento como negativo (é crédito na fatura), e o
+    // seed o gera positivo. O módulo cobre os dois sem depender da convenção da
+    // fonte — "Valor pago" é uma quantia, e quantia não tem sinal.
+    valuePaid: round(Math.abs(paid)),
     total: round(total),
     // Conta só as compras. O pagamento da fatura é um lançamento, mas a coluna
     // da tela se chama "Compras" — incluí-lo deixava o número sempre +1.
