@@ -1,0 +1,40 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+
+  // O Turborepo roda as tasks em modo estrito de ambiente: só as variáveis
+  // listadas aqui chegam nos apps. Sem isso, `PORT=3001 pnpm dev` seria ignorado
+  // (os apps ainda leriam o .env, mas o override do shell sumiria).
+  "globalEnv": [
+    "MONGO_URI",
+    "PORT",
+    "CORS_ORIGIN",
+    "VITE_API_URL",
+    "EXTRACTOR_SOURCE",
+    "BILLS_DIR",
+    "DRIVE_FILE_QUERY",
+    "GOOGLE_CREDENTIALS_PATH",
+    "GOOGLE_TOKEN_PATH"
+  ],
+  "globalDependencies": [".env"],
+
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "lint": {},
+    "seed": {
+      "cache": false
+    },
+    "start": {
+      "cache": false
+    }
+  }
+}

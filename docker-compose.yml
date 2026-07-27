@@ -1,0 +1,38 @@
+# Ambiente de desenvolvimento: sobe só o MongoDB.
+# A API, o front e o extractor rodam no host (`pnpm dev`), com hot-reload.
+#
+#   docker compose up -d      # sobe o banco
+#   docker compose down       # derruba (mantém os dados no volume)
+#   docker compose down -v    # derruba e APAGA os dados
+
+services:
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Cliente web opcional pra inspecionar as coleções: http://localhost:8081
+  # Sobe só quando pedido: `docker compose --profile tools up -d`
+  mongo-express:
+    image: mongo-express:1.0.2
+    profiles: ["tools"]
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017
+      ME_CONFIG_BASICAUTH: "false"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongodata:

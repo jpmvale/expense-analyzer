@@ -1,0 +1,7 @@
+packages:
+  - "apps/*"
+
+# O esbuild precisa rodar o script de instalação pra baixar o binário nativo —
+# sem isso o Vite não sobe. O resto fica bloqueado (padrão do pnpm 10).
+onlyBuiltDependencies:
+  - esbuild

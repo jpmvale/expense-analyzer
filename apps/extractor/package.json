@@ -1,0 +1,30 @@
+{
+  "name": "@nubank-analysis/extractor",
+  "version": "1.0.0",
+  "description": "Lê as faturas em CSV (Google Drive ou pasta local) e grava as compras no MongoDB",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "seed": "tsx src/seed.ts",
+    "build": "tsc",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google-cloud/local-auth": "^3.0.1",
+    "dotenv": "^16.6.1",
+    "google-auth-library": "^10.3.0",
+    "googleapis": "^160.0.0",
+    "mongodb": "^6.19.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.34.0",
+    "@types/node": "^22.15.3",
+    "eslint": "^9.34.0",
+    "globals": "^16.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.41.0"
+  }
+}

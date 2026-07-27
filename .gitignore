@@ -1,0 +1,38 @@
+# deps
+node_modules/
+
+# builds
+dist/
+dist-ssr/
+*.tsbuildinfo
+.turbo/
+
+# env — nunca committar credenciais
+.env
+.env.local
+.env.*.local
+
+# Credenciais do Google Drive (apps/extractor).
+# `drive-credentials.json` é o OAuth client baixado do Google Cloud Console;
+# `token.json` é o refresh token gerado no primeiro login. Ambos são segredos.
+drive-credentials.json
+token.json
+
+# CSVs de fatura baixados localmente
+bills/*.csv
+
+# logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# cobertura de testes
+coverage/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
