@@ -35,6 +35,11 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 
 **Requisitos:** Node ≥ 22, pnpm 10 (via `corepack enable`), Docker.
 
+> **Use `pnpm` direto, não `corepack pnpm`.** O `packageManager` deste repo está fixado em 10.15.0.
+> Chamado via `corepack`, um pnpm 11 instalado na máquina se recusa a trocar de versão e os scripts
+> com `--filter` quebram com `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL`. O `pnpm` direto respeita o
+> `packageManager` e troca de versão sozinho.
+
 ```bash
 # 1. Dependências
 pnpm install
