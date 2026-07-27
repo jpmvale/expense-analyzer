@@ -86,6 +86,63 @@ describe('parseBillCsv', () => {
       const [purchase] = parse('date,category,title,amount\n2025-03-02,,LOJA DESCONHECIDA,20');
       assert.equal(purchase.category, 'outros');
     });
+
+    it('casa palavra-chave sem depender de acento ou caixa', () => {
+      const [zeDelivery] = parse('date,category,title,amount\n2025-03-02,,Zé Delivery - NuPay,30');
+      assert.equal(zeDelivery.category, 'restaurante');
+
+      const [farmacia] = parse('date,category,title,amount\n2025-03-02,,FARMÁCIA CENTRAL,30');
+      assert.equal(farmacia.category, 'saúde');
+    });
+
+    it('a memória tem precedência sobre a palavra-chave', () => {
+      const memory = new CategoryMemory();
+      // "Google" bateria em `serviços` por palavra-chave, mas o histórico do
+      // usuário diz outra coisa — e o histórico dele sabe mais.
+      parse('date,category,title,amount\n2025-03-02,educação,Google Cursos,50', memory);
+      const [purchase] = parse('date,category,title,amount\n2025-04-02,,Google Cursos,50', memory);
+
+      assert.equal(purchase.category, 'educação');
+    });
+  });
+
+  // O emissor parou de categorizar em jul/2024 e passou a carimbar `outros` em
+  // quase tudo. Como `outros` é string não-vazia, ele curto-circuitava o `||` e
+  // desligava a herança por título justamente quando ela virou indispensável.
+  describe('"outros" tratado como ausência de categoria', () => {
+    it('herda de um título categorizado numa fatura anterior', () => {
+      const memory = new CategoryMemory();
+      parse('date,category,title,amount\n2024-06-02,supermercado,MIX MATEUS,150', memory);
+      const [purchase] = parse(
+        'date,category,title,amount\n2024-07-02,outros,MIX MATEUS,180',
+        memory,
+      );
+
+      assert.equal(purchase.category, 'supermercado');
+    });
+
+    it('cai na palavra-chave quando o título é novo', () => {
+      const [purchase] = parse('date,category,title,amount\n2025-03-02,outros,Ifd*Pampas Real,45');
+      assert.equal(purchase.category, 'restaurante');
+    });
+
+    it('continua "outros" quando não há de onde inferir', () => {
+      const [purchase] = parse('date,category,title,amount\n2025-03-02,outros,LOJA NOVA XYZ,45');
+      assert.equal(purchase.category, 'outros');
+    });
+
+    // Um `outros` carimbado pelo emissor não é informação: deixá-lo entrar na
+    // memória travaria o título em `outros` para sempre.
+    it('não entra na memória de categorização', () => {
+      const memory = new CategoryMemory();
+      parse('date,category,title,amount\n2024-07-02,outros,MIX MATEUS,180', memory);
+      const [purchase] = parse(
+        'date,category,title,amount\n2024-08-02,supermercado,MIX MATEUS,150',
+        memory,
+      );
+
+      assert.equal(purchase.category, 'supermercado');
+    });
   });
 
   // O Nubank mistura códigos internos de transação no campo categoria. Eles vazavam
@@ -119,11 +176,12 @@ describe('parseBillCsv', () => {
     });
 
     // Um código descreve o tipo da transação, não o estabelecimento: sem isto, uma
-    // padaria que teve um estorno viraria "estorno" nos meses sem categoria.
+    // loja que teve um estorno viraria "estorno" nos meses sem categoria.
+    // O título aqui é neutro de propósito — não casa com nenhuma palavra-chave.
     it('não entram na memória de categorização', () => {
       const memory = new CategoryMemory();
-      parse('date,category,title,amount\n2025-03-02,reversal_brazil_settled,PADARIA,-20', memory);
-      const [purchase] = parse('date,category,title,amount\n2025-03-09,,PADARIA,18', memory);
+      parse('date,category,title,amount\n2025-03-02,reversal_brazil_settled,LOJA ZZZ,-20', memory);
+      const [purchase] = parse('date,category,title,amount\n2025-03-09,,LOJA ZZZ,18', memory);
 
       assert.notEqual(purchase.category, 'estorno');
       assert.equal(purchase.category, 'outros');

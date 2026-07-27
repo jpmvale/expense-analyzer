@@ -18,9 +18,17 @@ date,category,title,amount
 2024-02-17,,UBER TRIP,18.50
 ```
 
-Quando `category` vem vazia, o extractor infere: primeiro procura o mesmo título
-já categorizado em qualquer fatura da execução, depois tenta palavras-chave
-(uber/99app → `transporte`) e, por fim, cai em `outros`.
+Quando `category` vem vazia — **ou vem como `outros`** —, o extractor infere: primeiro
+procura o mesmo título já categorizado numa fatura anterior, depois tenta palavras-chave
+(uber/99app → `transporte`, ifood → `restaurante`) e, por fim, cai em `outros`.
+
+> **Por que `outros` conta como ausência de categoria.** Em julho de 2024 o Nubank
+> parou de categorizar: a taxa de `outros` saltou de 4% em junho para 31% em julho,
+> chegando a 90% em 2025. Como `outros` é uma string não-vazia, ele desligava a
+> herança por título justamente quando ela virou indispensável.
+
+As faturas são lidas em ordem cronológica pelo mês de referência, não pela ordem do
+nome do arquivo: a herança por título só propaga para a frente.
 
 O pagamento da fatura entra como uma linha de categoria `payment` — a API o separa
 dos gastos e usa o valor na coluna "Valor pago".

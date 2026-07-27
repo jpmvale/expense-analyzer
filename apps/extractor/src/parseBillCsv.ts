@@ -2,13 +2,54 @@ import { Purchase } from './interfaces/purchase';
 
 /**
  * Categorias inferidas por palavra-chave no título, para quando o CSV não traz
- * a coluna `category` e o título nunca apareceu categorizado antes.
+ * categoria útil e o título nunca apareceu categorizado antes.
+ *
+ * As chaves casam por trecho do título, já sem acento e em caixa baixa, então
+ * `ifd*` pega `Ifd*Pampas Real` e `Ifd*Idayanne Conceicao` de uma vez. São
+ * marcas e ramos, nunca meio de pagamento: `nupay` aparece tanto em
+ * `iFood - NuPay` quanto em `E-AÍ CLUBE AUTOMOBILISTA S.A. - NuPay` e não diz
+ * nada sobre o tipo do gasto.
  */
 const KEYWORD_CATEGORIES: Record<string, string[]> = {
-  transporte: ['uber', '99app', '99 app', 'cabify'],
+  transporte: ['uber', '99app', '99 app', 'cabify', 'posto ', 'estacionamento', 'combustivel'],
+  restaurante: [
+    'ifood',
+    'ifd*',
+    'ze delivery',
+    'restaurante',
+    'pizzaria',
+    'burger',
+    'gastrobar',
+    'padaria',
+    'casa de paes',
+    'lanchonete',
+    'cafe ',
+  ],
+  supermercado: [
+    'mateus',
+    'armazzem',
+    'emporio',
+    'supermerc',
+    'mercadinho',
+    'hortifruti',
+    'atacad',
+  ],
+  // As chaves são o nome da categoria como ela já existe na base — com acento,
+  // senão `saude` viraria uma categoria separada de `saúde`.
+  saúde: ['drogasil', 'drogaria', 'farmacia', 'academia', 'smart fit', 'clinica', 'laboratorio'],
+  serviços: ['google', 'youtube', 'spotify', 'netflix', 'amazon prime', 'microsoft', 'openai'],
+  lazer: ['sinuca', 'cinema', 'clube da bola', 'q-ball', 'arena '],
 };
 
 const FALLBACK_CATEGORY = 'outros';
+
+/** Caixa baixa e sem acento — usado só na comparação por palavra-chave. */
+function normalize(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
 
 /**
  * O Nubank mistura códigos internos de transação no campo `category`
@@ -90,15 +131,30 @@ function splitCsvLine(line: string): string[] {
 }
 
 function inferCategory(title: string, memory: CategoryMemory): string {
+  // A memória vem antes da palavra-chave: o histórico do próprio usuário sabe
+  // mais sobre um estabelecimento do que uma regra genérica.
   const known = memory.lookup(title);
   if (known) return known;
 
-  const lower = title.toLowerCase();
+  const normalized = normalize(title);
   for (const [category, keywords] of Object.entries(KEYWORD_CATEGORIES)) {
-    if (keywords.some((keyword) => lower.includes(keyword))) return category;
+    if (keywords.some((keyword) => normalized.includes(keyword))) return category;
   }
 
   return FALLBACK_CATEGORY;
+}
+
+/**
+ * Se a categoria que veio no CSV vale alguma coisa.
+ *
+ * `outros` não vale: em julho/2024 o emissor parou de categorizar e passou a
+ * carimbar `outros` em quase tudo — 4% dos lançamentos em junho contra 31% em
+ * julho, chegando a 90% em 2025. Como `outros` é uma string não-vazia, ele
+ * curto-circuitava o `||` e desligava a herança por título justamente no período
+ * em que ela era mais necessária. Tratá-lo como "não sei" religa a inferência.
+ */
+function isMeaningfulCategory(category: string): boolean {
+  return Boolean(category) && category !== FALLBACK_CATEGORY && !aliasForCategory(category);
 }
 
 /**
@@ -128,7 +184,7 @@ export function parseBillCsv(
   // uma vez como estorno faria as compras normais da padaria virarem estorno nos
   // meses em que viessem sem categoria.
   for (const row of rows) {
-    if (row.category && row.title && !aliasForCategory(row.category)) {
+    if (row.title && isMeaningfulCategory(row.category)) {
       memory.remember(row.category, row.title);
     }
   }
@@ -143,15 +199,14 @@ export function parseBillCsv(
       continue;
     }
 
-    const category = row.category || inferCategory(title, memory);
+    // Um código interno vira rótulo de domínio; uma categoria que diz alguma
+    // coisa é respeitada; o resto — vazio ou `outros` — vai para a inferência.
+    const alias = aliasForCategory(row.category);
+    const category =
+      alias ??
+      (isMeaningfulCategory(row.category) ? row.category : inferCategory(title, memory));
 
-    purchases.push({
-      title,
-      amount,
-      date,
-      category: aliasForCategory(category) ?? category,
-      referenceMonth,
-    });
+    purchases.push({ title, amount, date, category, referenceMonth });
   }
 
   return purchases;

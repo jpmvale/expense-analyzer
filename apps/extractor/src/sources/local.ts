@@ -24,19 +24,27 @@ export async function fetchBillsFromDisk(): Promise<Bill[]> {
     return [];
   }
 
+  // Processa em ordem cronológica pelo mês detectado, não pela ordem do nome do
+  // arquivo: a memória de categorização só propaga para a frente, e ler as
+  // faturas antigas por último a deixaria vazia justo onde ela é necessária.
+  const ordenados = fileNames
+    .flatMap((fileName) => {
+      const referenceMonth = referenceMonthFromFileName(fileName);
+      if (!referenceMonth) {
+        console.warn(`Ignorando "${fileName}": o nome não contém o padrão <ano>-<mês>.`);
+        return [];
+      }
+      return [{ fileName, referenceMonth }];
+    })
+    .sort((a, b) => +a.referenceMonth - +b.referenceMonth);
+
   const memory = new CategoryMemory();
   const bills: Bill[] = [];
 
-  for (const fileName of fileNames) {
-    const referenceMonth = referenceMonthFromFileName(fileName);
-    if (!referenceMonth) {
-      console.warn(`Ignorando "${fileName}": o nome não contém o padrão <ano>-<mês>.`);
-      continue;
-    }
-
+  for (const { fileName, referenceMonth } of ordenados) {
     const csv = await readFile(join(config.billsDir, fileName), 'utf-8');
     bills.push({ referenceMonth, data: parseBillCsv(csv, referenceMonth, memory) });
   }
 
-  return bills.sort((a, b) => +a.referenceMonth - +b.referenceMonth);
+  return bills;
 }

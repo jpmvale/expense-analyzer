@@ -81,23 +81,33 @@ export async function fetchBillsFromDrive(): Promise<Bill[]> {
     return [];
   }
 
-  // A memória é compartilhada entre as faturas: um título categorizado num mês
-  // categoriza o mesmo título nos meses em que ele veio sem categoria.
+  // A memória de categorização só propaga para a frente: um título categorizado
+  // num mês categoriza os meses seguintes em que ele vier sem categoria. Por isso
+  // a ordem de PROCESSAMENTO é cronológica, pelo mês detectado — não pela ordem
+  // que o Drive devolve. Hoje as duas coincidem por acaso, mas basta um arquivo
+  // fora do padrão de nome para as faturas antigas serem lidas por último e a
+  // memória chegar vazia justo onde é necessária.
+  const ordenados = files
+    .flatMap((file) => {
+      if (!file.id || !file.name) return [];
+
+      const referenceMonth = referenceMonthFromFileName(file.name);
+      if (!referenceMonth) {
+        console.warn(`Ignorando "${file.name}": o nome não contém o padrão <ano>-<mês>.`);
+        return [];
+      }
+
+      return [{ id: file.id, referenceMonth }];
+    })
+    .sort((a, b) => +a.referenceMonth - +b.referenceMonth);
+
   const memory = new CategoryMemory();
   const bills: Bill[] = [];
 
-  for (const file of files) {
-    if (!file.id || !file.name) continue;
-
-    const referenceMonth = referenceMonthFromFileName(file.name);
-    if (!referenceMonth) {
-      console.warn(`Ignorando "${file.name}": o nome não contém o padrão <ano>-<mês>.`);
-      continue;
-    }
-
-    const raw = await drive.files.get({ fileId: file.id, alt: 'media' });
+  for (const { id, referenceMonth } of ordenados) {
+    const raw = await drive.files.get({ fileId: id, alt: 'media' });
     bills.push({ referenceMonth, data: parseBillCsv(String(raw.data), referenceMonth, memory) });
   }
 
-  return bills.sort((a, b) => +a.referenceMonth - +b.referenceMonth);
+  return bills;
 }
