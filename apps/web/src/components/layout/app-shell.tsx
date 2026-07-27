@@ -3,6 +3,7 @@ import {
   LayoutDashboardIcon,
   MenuIcon,
   ReceiptTextIcon,
+  RepeatIcon,
   TagsIcon,
   WalletIcon,
 } from 'lucide-react';
@@ -17,6 +18,7 @@ const NAV = [
   { to: '/dashboard', label: 'Visão geral', Icon: LayoutDashboardIcon },
   { to: '/purchases', label: 'Compras', Icon: ReceiptTextIcon },
   { to: '/bills', label: 'Faturas', Icon: FileTextIcon },
+  { to: '/recurring', label: 'Assinaturas', Icon: RepeatIcon },
   { to: '/uncategorized', label: 'Sem categoria', Icon: TagsIcon },
 ];
 

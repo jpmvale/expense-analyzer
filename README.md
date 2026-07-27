@@ -30,6 +30,7 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | **Visão geral** | A home: última fatura fechada com a variação contra o mês anterior, média dos doze meses anteriores, total do ano e a composição do mês. Parcelas já lançadas em faturas futuras aparecem à parte, fora dos agregados. |
 | **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês, com o fundo da célula proporcional ao peso. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. Meses com juros ou multa vêm marcados, e o valor aparece à parte do gasto. |
 | **Encargo ≠ gasto** | Juros, multa e saldo rolado saem do total gasto e ganham linha própria. Somá-los respondia "quanto você gastou" com dinheiro que ninguém gastou — [detalhes abaixo](#gasto-e-encargo-não-são-a-mesma-coisa). |
+| **Assinaturas** | Detecta as cobranças que se repetem todo mês com preço estável e mostra a **escada de preços** de cada uma: quando mudou, de quanto para quanto. É o que o app do banco não faz, porque depende de anos de série contínua — [como funciona](#como-uma-assinatura-é-detectada). |
 | **API** | REST documentada em OpenAPI/Swagger, com validação dos filtros. |
 
 > **Sobre "outros".** Em julho de 2024 o emissor parou de classificar e passou a carimbar `outros`
@@ -224,6 +225,52 @@ regra não importar.
 
 ---
 
+## Como uma assinatura é detectada
+
+O que define recorrência aqui é o **patamar de preço**, não a cadência. Cadência sozinha não
+distingue nada: `Uber *Uber *Trip` aparece 43 meses seguidos com 43 valores diferentes, e a Netflix
+aparece 52 meses com três. Uma assinatura é uma série feita de **poucos preços longos**, e um degrau
+é a passagem de um patamar para o outro.
+
+Antes de agrupar, o **prefixo do intermediário** sai do título. O mesmo Spotify chegou como
+`Ebanx *Spotify`, `Ebw*Spotify`, `Ebn *Spotify` e `Dm *Spotify` conforme o gateway mudou de nome ao
+longo dos anos — oito formas para uma assinatura só. Sem juntá-las, a série se parte em oito pedaços
+curtos e a escada de 2019 a 2026 (R$ 8,50 → R$ 23,90, com uma promoção de R$ 9,90 que durou dez meses
+e voltou) simplesmente não existe.
+
+Passa por assinatura quem cumpre tudo isto:
+
+| Regra | Por quê |
+| --- | --- |
+| ≥ 6 cobranças em ≥ 6 meses distintos | Abaixo disso qualquer coisa parece padrão. |
+| ≥ 3 cobranças por patamar, na média | É a regra que decide. `Comercial Ovolar` tem 45 compras quase mensais, mas oscilando entre R$ 21 e R$ 28: 21 patamares, média 2,1. A Netflix tem 52 cobranças em 3 patamares, média 17,3. |
+| ≤ 1,5 cobrança por mês | Assinatura cobra uma vez. Tira o `Ifood *Ifd*Dominos P`, que alterna entre dois preços de promoção 24 vezes em 9 meses. Não é 1,0 exato porque a data desliza entre o fim de um mês e o começo do outro. |
+| Valor positivo, sem sufixo de parcela | Estorno não é preço. E uma compra dividida em dez é dez cobranças mensais idênticas — a assinatura mais convincente que existe, e não é uma. |
+
+O preço vigente é **o último patamar que se repetiu**, e o anterior também precisa ter se repetido.
+Um lançamento solitário não é preço: sem essa regra, uma taxa avulsa de R$ 9,90 antes da mensalidade
+de R$ 149,90 fazia a tela anunciar um reajuste de **+1414%**, que seria o maior número da página e não
+quer dizer nada.
+
+### O que ela erra
+
+- **Parcelamento sem o sufixo.** `Casasbahia.C*287604502` são nove parcelas de R$ 183,84 que o emissor
+  não numerou no título. É indistinguível de uma assinatura cancelada, e aparece como tal. Fica entre
+  as encerradas, longe do topo da lista.
+- **Assinatura de valor irregular escapa.** `Google One` (mensal de R$ 12,50 misturado com anual de
+  R$ 149,90, mais um estorno no meio) e o `iFood Club` (escada 4,95 → 6,99 → 9,98 → 12,90, com só uma
+  cobrança em cada degrau) não passam na média de 3. Afrouxar o corte para pegá-las traz junto todo
+  fornecedor de preço oscilante, e o custo de um falso positivo — anunciar reajuste onde não houve —
+  é maior que o de perder uma linha.
+- **Troca de plano vira percentual sem sentido.** `Google Storage` saiu de R$ 6,99 por mês para
+  R$ 69,99 por ano: os dois valores são reais, e o `+901%` entre eles não significa nada.
+- **O mesmo lugar sob nomes diferentes conta duas vezes.** `Google Youtube` e `Dl*Google Youtub`
+  aparecem separados. Fundir por prefixo resolveria esse caso e quebraria outros — `Casa de Paes
+  Faria` e `Casa de Paes Faria Lj2` são filiais distintas —, e na base de referência havia só nove
+  pares desses. Não compensou.
+
+---
+
 ## Estrutura
 
 Monorepo **pnpm workspaces + Turborepo**, TypeScript em tudo.
@@ -335,6 +382,33 @@ Uma entrada por mês de referência, em ordem cronológica.
 }
 ```
 
+### `GET /purchase/recurring`
+
+As cobranças recorrentes e o degrau de preço de cada uma, ativas primeiro e depois pelo maior degrau
+em módulo — uma queda importa tanto quanto uma alta, e é a que ninguém confere. É o que a tela
+*Assinaturas* lista; o critério está em [Como uma assinatura é detectada](#como-uma-assinatura-é-detectada).
+
+A varredura é sobre a base inteira, sem recorte de período: a escada do Spotify começa em 2019, e
+qualquer janela mais curta acharia um patamar só e nenhum degrau.
+
+```jsonc
+{
+  "title": "Dm *Spotify",                 // a forma mais frequente do título
+  "titles": ["Dm *Spotify", "Ebanx*Spotify", "Ebw*Spotify"],  // as 8 formas agrupadas
+  "charges": 84,
+  "months": 77,
+  "current": 23.9,                        // último patamar que se repetiu
+  "previous": 21.9,
+  "change": 9.13,                         // %, negativo quando o preço caiu
+  "since": "2025-09-14T00:00:00.000Z",    // desde quando `current` vale
+  "lastDate": "2026-07-12T00:00:00.000Z",
+  "active": true,                         // cobrou nos últimos 2 meses
+  "plateaus": [                           // a escada inteira, do mais antigo ao mais novo
+    { "amount": 8.5, "charges": 12, "since": "2019-11-08T00:00:00.000Z" }
+  ]
+}
+```
+
 ### `GET /purchase/uncategorized`
 
 Os títulos ainda em `outros`, agrupados por estabelecimento, do que mais pesa para o que menos pesa.
@@ -416,10 +490,14 @@ Para inspecionar o banco pelo navegador: `docker compose --profile tools up -d` 
 - A reaplicação varre a coleção inteira a cada mudança de regra. Numa base pessoal — alguns milhares
   de compras, algumas centenas de títulos — isso some no tempo da requisição. Numa base grande,
   não sumiria.
-- **Nada avisa quando uma cobrança recorrente sobe de preço**, apesar de o histórico ter tudo o que
-  seria preciso para isso. É o que mais falta.
+- **A detecção de assinatura é uma tela, não um aviso.** O degrau de preço está lá, mas você precisa
+  ir olhar: não há alerta quando um reajuste aparece numa fatura nova. O que a detecção erra de
+  propósito está em [O que ela erra](#o-que-ela-erra).
+- `GET /purchase/recurring` varre a coleção inteira e agrupa em memória a cada requisição, porque a
+  escada de preços depende da série completa. Mesmo custo da reaplicação de regras, e some igual numa
+  base pessoal.
 - Os testes cobrem as funções puras onde moram as regras: o parser de CSV, a montagem do filtro do
-  Mongo e o agrupamento dos gráficos. Não há testes de integração — o CI compensa com lint,
+  Mongo, a detecção de assinatura e o agrupamento dos gráficos. Não há testes de integração — o CI compensa com lint,
   typecheck, build e um smoke test da API contra um MongoDB de verdade.
 - A interface é **escura por padrão**, com alternador claro/escuro/sistema. Os tokens vivem em
   `apps/web/src/assets/globals.css`, no padrão CSS-first do Tailwind 4.

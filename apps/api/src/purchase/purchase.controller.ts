@@ -20,6 +20,14 @@ export class PurchaseController {
     return this.purchaseService.listBills();
   }
 
+  @Get('recurring')
+  @ApiOperation({
+    summary: 'Cobranças recorrentes detectadas, com o degrau de preço de cada uma',
+  })
+  listRecurring() {
+    return this.purchaseService.listRecurring();
+  }
+
   @Get('uncategorized')
   @ApiOperation({
     summary: 'Os títulos ainda em "outros", agrupados e ordenados pelo dinheiro parado em cada um',

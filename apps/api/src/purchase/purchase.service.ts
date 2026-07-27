@@ -1,4 +1,4 @@
-import { FALLBACK_CATEGORY } from '@expense/categorization';
+import { FALLBACK_CATEGORY, NON_SPENDING_CATEGORIES } from '@expense/categorization';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -6,9 +6,11 @@ import { Purchase, PurchaseDocument } from '../schemas/purchase.schema';
 import { Bill, buildBills, round } from './bill-aggregation';
 import { ListPurchasesQueryDto } from './dto/list-purchases-query.dto';
 import { buildPurchaseFilter } from './purchase-filter';
+import { buildRecurringCharges, RecurringCharge } from './recurring';
 import { buildUncategorizedTitles, UncategorizedTitle } from './uncategorized';
 
 export type { Bill, CategoryBreakdown } from './bill-aggregation';
+export type { PricePlateau, RecurringCharge } from './recurring';
 export type { UncategorizedTitle } from './uncategorized';
 
 @Injectable()
@@ -59,5 +61,25 @@ export class PurchaseService {
       .exec();
 
     return buildUncategorizedTitles(purchases);
+  }
+
+  /**
+   * As cobranças recorrentes e o degrau de preço de cada uma.
+   *
+   * É a rota que justifica o sistema existir: o app do banco responde "quanto
+   * gastei e com quê", mas só aqui há oito anos de série contínua para dizer
+   * que a assinatura subiu 28% e ninguém percebeu.
+   *
+   * A varredura é sobre a base inteira de propósito, sem recorte de período: a
+   * escada de preços do Spotify começa em 2019, e qualquer janela mais curta
+   * acharia um patamar só e nenhum degrau.
+   */
+  async listRecurring(): Promise<RecurringCharge[]> {
+    const purchases = await this.purchaseModel
+      .find({ category: { $nin: NON_SPENDING_CATEGORIES } })
+      .select('title amount date')
+      .exec();
+
+    return buildRecurringCharges(purchases);
   }
 }

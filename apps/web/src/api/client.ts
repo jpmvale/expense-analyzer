@@ -7,6 +7,7 @@ import type {
   UncategorizedTitle,
 } from '../interface/category';
 import type ListPurchase from '../interface/listPurchase';
+import type { RecurringCharge } from '../interface/recurring';
 
 /**
  * Base da API. Vem de VITE_API_URL (.env da raiz); o default cobre o caso de
@@ -78,6 +79,10 @@ export function listPurchases(filters: PurchaseFilters): Promise<ListPurchase> {
 
 export function listBills(): Promise<Bill[]> {
   return getJson<Bill[]>('/purchase/bill');
+}
+
+export function listRecurring(): Promise<RecurringCharge[]> {
+  return getJson<RecurringCharge[]>('/purchase/recurring');
 }
 
 export function listUncategorized(): Promise<UncategorizedTitle[]> {
