@@ -6,7 +6,7 @@
   "license": "MIT",
   "scripts": {
     "build": "nest build",
-    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test": "TZ=America/Sao_Paulo node --import tsx --test \"src/**/*.test.ts\"",
     "dev": "nest start --watch",
     "start": "node dist/main",
     "debug": "nest start --debug --watch",
