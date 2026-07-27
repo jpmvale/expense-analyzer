@@ -26,10 +26,13 @@ export function buildPurchasesQuery({ categories, title, month }: PurchaseFilter
   if (categories && categories.length > 0) params.set('category', categories.join(','));
   if (title) params.set('title', title);
   if (month) {
-    // Qualquer dia serve — a API filtra o mês inteiro da data informada.
+    // O seletor da tela se chama "Fatura", então filtra pelo mês da fatura
+    // (`month`) e não pela data da compra (`date`) — os dois campos existem na
+    // API e são diferentes de propósito. `YYYY-MM` também evita a viagem de ida
+    // e volta por um Date, onde o fuso já mordeu antes.
     const year = month.getFullYear();
     const monthNumber = String(month.getMonth() + 1).padStart(2, '0');
-    params.set('date', `${year}-${monthNumber}-15`);
+    params.set('month', `${year}-${monthNumber}`);
   }
   const query = params.toString();
   return query ? `?${query}` : '';

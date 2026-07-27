@@ -14,6 +14,7 @@ import ChartData from '../../interface/chartData';
 import { monthEnum } from '../../interface/monthEnum';
 import Purchase from '../../interface/purchase';
 import { Column } from '../../interface/tableColumn';
+import { groupByCategory, groupByMonth } from '../../lib/groupPurchases';
 
 const months: monthEnum = {
   '01': 'JAN',
@@ -66,41 +67,6 @@ const Item = styled(Paper)(({ theme }) => ({
   textAlign: 'center',
   color: theme.palette.text.secondary,
 }));
-
-/** Agrupa as compras por mês, preenchendo com zero os meses sem nenhuma compra. */
-const groupByMonth = (data: Purchase[]): ChartData[] => {
-  if (data.length === 0) return [];
-
-  const groupedByMonth: Record<string, ChartData> = {};
-  const firstDate = new Date(data[0].date);
-  const lastDate = new Date();
-
-  const cursor = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
-  while (cursor <= lastDate) {
-    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
-    groupedByMonth[key] = { value: key, data: [] };
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-
-  for (const record of data) {
-    const date = new Date(record.date);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    groupedByMonth[key]?.data.push(record);
-  }
-
-  return Object.values(groupedByMonth);
-};
-
-const groupByCategory = (data: Purchase[]): ChartData[] => {
-  const groupedByCategory: Record<string, ChartData> = {};
-
-  for (const record of data) {
-    groupedByCategory[record.category] ??= { value: record.category, data: [] };
-    groupedByCategory[record.category].data.push(record);
-  }
-
-  return Object.values(groupedByCategory);
-};
 
 function Home() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);

@@ -1,14 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model } from 'mongoose';
+import { Model } from 'mongoose';
 import { Purchase, PurchaseDocument } from '../schemas/purchase.schema';
 import { ListPurchasesQueryDto } from './dto/list-purchases-query.dto';
-
-/**
- * O extractor grava os pagamentos da fatura como compras de categoria `payment`.
- * Eles entram no cálculo do que foi pago no mês, mas nunca contam como gasto.
- */
-const PAYMENT_CATEGORY = 'payment';
+import { buildPurchaseFilter, PAYMENT_CATEGORY } from './purchase-filter';
 
 export interface CategoryBreakdown {
   categoryByMonth: string;
@@ -37,29 +32,10 @@ export class PurchaseService {
   ) {}
 
   async listPurchases(filter: ListPurchasesQueryDto) {
-    const query: FilterQuery<PurchaseDocument> = {
-      category: { $ne: PAYMENT_CATEGORY },
-      amount: { $gt: 0 },
-    };
-
-    if (filter.category) {
-      query.category = { $in: filter.category.split(',').map((c) => c.trim()) };
-    }
-
-    if (filter.date) {
-      // Qualquer dia serve: o filtro é sempre o mês inteiro daquela data.
-      const month = new Date(filter.date);
-      query.date = {
-        $gte: new Date(month.getFullYear(), month.getMonth(), 1),
-        $lte: new Date(month.getFullYear(), month.getMonth() + 1, 0),
-      };
-    }
-
-    if (filter.title) {
-      query.title = { $regex: escapeRegExp(filter.title), $options: 'i' };
-    }
-
-    const purchases = await this.purchaseModel.find(query).sort('date').exec();
+    const purchases = await this.purchaseModel
+      .find(buildPurchaseFilter(filter))
+      .sort('date')
+      .exec();
     const sum = purchases.reduce((acc, purchase) => acc + purchase.amount, 0);
     const total = purchases.length;
 
@@ -140,9 +116,4 @@ function monthKey(date: Date): string {
 
 function round(value: number): number {
   return Math.round(value * 100) / 100;
-}
-
-/** O título vem do usuário e vira regex — sem escapar, `(` derruba a query. */
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

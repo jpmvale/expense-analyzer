@@ -30,6 +30,7 @@
       "dependsOn": ["^build"]
     },
     "lint": {},
+    "test": {},
     "seed": {
       "cache": false
     },

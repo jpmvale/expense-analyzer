@@ -174,7 +174,12 @@ Lista as compras (excluindo pagamentos) com os agregados do conjunto filtrado.
 | --- | --- | --- |
 | `category` | `supermercado,transporte` | Uma ou mais categorias, separadas por vírgula |
 | `title` | `uber` | Busca parcial, sem diferenciar maiúsculas |
-| `date` | `2024-03-15` | Qualquer dia do mês desejado — o filtro cobre o mês inteiro |
+| `date` | `2024-03-15` | Mês da **data da compra**. Qualquer dia serve — o filtro cobre o mês inteiro |
+| `month` | `2024-03` | Mês da **fatura** em que a compra apareceu |
+
+`date` e `month` filtram campos diferentes de propósito: uma compra de 28/02 costuma cair na fatura
+de março, então `date=2024-02-10` e `month=2024-02` devolvem conjuntos distintos. A tela filtra por
+`month` — o seletor se chama "Fatura".
 
 ```jsonc
 {
@@ -221,6 +226,7 @@ Todos rodam da raiz do repositório.
 | `pnpm build` | Compila os três apps (Turborepo) |
 | `pnpm lint` | ESLint em todos os workspaces |
 | `pnpm typecheck` | Checagem de tipos em todos os workspaces |
+| `pnpm test` | Testes unitários (runner nativo do Node, sem banco) |
 | `pnpm db:up` / `pnpm db:down` | Sobe / derruba o MongoDB |
 | `pnpm db:seed` | Popula o banco com 18 meses de faturas fictícias (determinístico) |
 | `pnpm extract` | Roda o extractor com as suas faturas de verdade |
@@ -232,8 +238,9 @@ Para inspecionar o banco pelo navegador: `docker compose --profile tools up -d` 
 ## Estado atual
 
 - **Não há autenticação.** A API é aberta; suba num ambiente confiável, não na internet pública.
-- **Não há testes automatizados.** O CI cobre lint, typecheck, build e um smoke test da API contra
-  um MongoDB de verdade.
+- Os testes cobrem as funções puras onde moram as regras: o parser de CSV, a montagem do filtro do
+  Mongo e o agrupamento dos gráficos. Não há testes de integração — o CI compensa com lint,
+  typecheck, build e um smoke test da API contra um MongoDB de verdade.
 - A página **/dashboard** é um esqueleto — os gráficos vivem em `/purchases`.
 
 ## Licença
