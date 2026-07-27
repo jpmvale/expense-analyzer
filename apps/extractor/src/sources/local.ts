@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { config } from '../config';
 import { Bill } from '../interfaces/bill';
 import { CategoryMemory, parseBillCsv, referenceMonthFromFileName } from '../parseBillCsv';
+import { warnDiscarded } from './warnDiscarded';
 
 /**
  * Lê as faturas de um diretório da máquina — útil pra quem baixa os CSVs
@@ -43,7 +44,9 @@ export async function fetchBillsFromDisk(): Promise<Bill[]> {
 
   for (const { fileName, referenceMonth } of ordenados) {
     const csv = await readFile(join(config.billsDir, fileName), 'utf-8');
-    bills.push({ referenceMonth, data: parseBillCsv(csv, referenceMonth, memory) });
+    const { purchases, discarded } = parseBillCsv(csv, referenceMonth, memory);
+    warnDiscarded(fileName, discarded);
+    bills.push({ referenceMonth, data: purchases });
   }
 
   return bills;

@@ -5,6 +5,7 @@ import { config } from '../config';
 import { Bill } from '../interfaces/bill';
 import { CategoryMemory, parseBillCsv, referenceMonthFromFileName } from '../parseBillCsv';
 import { excludeTrashed } from './driveQuery';
+import { warnDiscarded } from './warnDiscarded';
 
 const SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
 
@@ -97,16 +98,18 @@ export async function fetchBillsFromDrive(): Promise<Bill[]> {
         return [];
       }
 
-      return [{ id: file.id, referenceMonth }];
+      return [{ id: file.id, name: file.name, referenceMonth }];
     })
     .sort((a, b) => +a.referenceMonth - +b.referenceMonth);
 
   const memory = new CategoryMemory();
   const bills: Bill[] = [];
 
-  for (const { id, referenceMonth } of ordenados) {
+  for (const { id, name, referenceMonth } of ordenados) {
     const raw = await drive.files.get({ fileId: id, alt: 'media' });
-    bills.push({ referenceMonth, data: parseBillCsv(String(raw.data), referenceMonth, memory) });
+    const { purchases, discarded } = parseBillCsv(String(raw.data), referenceMonth, memory);
+    warnDiscarded(name, discarded);
+    bills.push({ referenceMonth, data: purchases });
   }
 
   return bills;

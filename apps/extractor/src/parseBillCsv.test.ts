@@ -10,7 +10,7 @@ import {
 const MARCO = new Date('2025-03-01T00:00:00.000Z');
 
 function parse(csv: string, memory = new CategoryMemory()) {
-  return parseBillCsv(csv, MARCO, memory);
+  return parseBillCsv(csv, MARCO, memory).purchases;
 }
 
 // Regressão: o emissor passou a exportar valores no formato brasileiro a partir
@@ -91,6 +91,35 @@ describe('parseBillCsv', () => {
 
   it('devolve vazio para um CSV sem linhas', () => {
     assert.deepEqual(parse(''), []);
+  });
+
+  // O descarte silencioso foi o que escondeu por meses as 55 linhas em formato
+  // brasileiro: elas sumiam sem contagem, e o sintoma aparecia três camadas
+  // depois, como uma coluna vazia na tela.
+  it('conta as linhas que descartou, para o descarte não ser silencioso', () => {
+    const resultado = parseBillCsv(
+      [
+        'date,category,title,amount',
+        '2025-03-02,lazer,,50', // sem título
+        '2025-03-03,lazer,CINEMARK,', // sem valor
+        '2025-03-04,lazer,CINEMARK,abc', // valor ilegível
+        '2025-03-05,lazer,CINEMARK,30', // válida
+      ].join('\n'),
+      MARCO,
+      new CategoryMemory(),
+    );
+
+    assert.equal(resultado.purchases.length, 1);
+    assert.equal(resultado.discarded, 3);
+  });
+
+  it('não conta descarte quando está tudo bem', () => {
+    const resultado = parseBillCsv(
+      'date,category,title,amount\n2025-03-05,lazer,CINEMARK,30',
+      MARCO,
+      new CategoryMemory(),
+    );
+    assert.equal(resultado.discarded, 0);
   });
 
   describe('categorização', () => {

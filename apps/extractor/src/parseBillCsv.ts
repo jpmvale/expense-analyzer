@@ -206,18 +206,28 @@ function isMeaningfulCategory(category: string): boolean {
   return Boolean(category) && category !== FALLBACK_CATEGORY && !aliasForCategory(category);
 }
 
+export interface ParsedBill {
+  purchases: Purchase[];
+  /** Linhas ignoradas por não terem título, valor ou data utilizáveis. */
+  discarded: number;
+}
+
 /**
  * Converte o CSV de uma fatura em compras. Espera um cabeçalho com, no mínimo,
  * `date`, `title` e `amount`; `category` é opcional (inferida quando ausente).
- * Linhas sem data, título ou valor são descartadas.
+ *
+ * Devolve também quantas linhas foram descartadas. Antes elas sumiam caladas, e
+ * foi assim que 55 lançamentos em formato brasileiro ficaram meses fora da base
+ * sem ninguém perceber — o sintoma visível era uma coluna vazia na tela, longe da
+ * causa. Contar é o que transforma isso em algo que aparece na hora.
  */
 export function parseBillCsv(
   csv: string,
   referenceMonth: Date,
   memory: CategoryMemory,
-): Purchase[] {
+): ParsedBill {
   const lines = csv.split('\n').filter((line) => line.trim() !== '');
-  if (lines.length === 0) return [];
+  if (lines.length === 0) return { purchases: [], discarded: 0 };
 
   const headers = splitCsvLine(lines[0]);
   const rows = lines.slice(1).map((line) => {
@@ -239,12 +249,15 @@ export function parseBillCsv(
   }
 
   const purchases: Purchase[] = [];
+  let discarded = 0;
+
   for (const row of rows) {
     const title = row.title;
     const amount = parseAmount(row.amount);
     const date = new Date(row.date);
 
     if (!title || Number.isNaN(amount) || amount === 0 || Number.isNaN(date.getTime())) {
+      discarded++;
       continue;
     }
 
@@ -258,7 +271,7 @@ export function parseBillCsv(
     purchases.push({ title, amount, date, category, referenceMonth });
   }
 
-  return purchases;
+  return { purchases, discarded };
 }
 
 /**
