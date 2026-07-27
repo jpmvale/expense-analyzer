@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { excludeTrashed } from './drive';
+import { excludeTrashed } from './driveQuery';
 
 describe('excludeTrashed', () => {
   // Regressão: o files.list do Drive devolve arquivos da lixeira por padrão, então
   // apagar uma fatura duplicada no Drive não surtia efeito — ela voltava na
-  // extração seguinte, sobrescrevendo o mês.
+  // extração seguinte e sobrescrevia o mês.
   it('restringe a busca aos arquivos vivos', () => {
-    assert.equal(excludeTrashed("name contains 'nubank'"), "(name contains 'nubank') and trashed = false");
+    assert.equal(
+      excludeTrashed("name contains 'nubank'"),
+      "(name contains 'nubank') and trashed = false",
+    );
   });
 
   // Sem os parênteses, `a or b and trashed = false` seria lido como
