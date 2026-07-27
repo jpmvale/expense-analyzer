@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import { TrendBadge } from '@/components/trend-badge';
+import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import {
   Table,
@@ -33,20 +35,57 @@ function Percentage({ value }: { value: number }) {
 
 export function BillsTable({ bills }: { bills: Bill[] }) {
   const categories = useMemo(() => categoriesByVolume(bills), [bills]);
-  // Mais recente primeiro: é o mês que se quer olhar ao abrir a tela.
-  const rows = useMemo(() => [...bills].reverse(), [bills]);
+
+  // Mais recente primeiro: é o mês que se quer olhar ao abrir a tela. Cada linha
+  // carrega a fatura anterior junto, para poder mostrar a variação — como `bills`
+  // chega em ordem cronológica, a anterior é simplesmente a de índice menor.
+  //
+  // Faturas de meses que ainda não chegaram trazem só as parcelas já lançadas.
+  // Elas aparecem na tabela, que é o registro completo, mas sem variação: comparar
+  // um mês pela metade contra um mês inteiro produz uma queda que não aconteceu.
+  const rows = useMemo(() => {
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    return bills
+      .map((bill, index) => ({
+        bill,
+        previous: index > 0 ? bills[index - 1] : undefined,
+        upcoming: bill.month > currentMonth,
+      }))
+      .reverse();
+  }, [bills]);
 
   return (
     <>
       {/* Mobile: um cartão por fatura, com as três categorias que mais pesaram. */}
       <div className="space-y-3 md:hidden">
-        {rows.map((bill) => {
+        {rows.map(({ bill, previous, upcoming }) => {
           const top = [...bill.categoriesResult].sort((a, b) => b.percentage - a.percentage);
           return (
             <Card key={bill.month} className="p-4">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-sm font-medium">{formatMonth(bill.month)}</span>
-                <span className="tabular text-base font-semibold">{currency(bill.total)}</span>
+              <div className="flex items-start justify-between gap-3">
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  {formatMonth(bill.month)}
+                  {upcoming && (
+                    <Badge variant="outline" className="font-normal">
+                      em aberto
+                    </Badge>
+                  )}
+                </span>
+                <div className="text-right">
+                  <span className="tabular block text-base font-semibold">
+                    {currency(bill.total)}
+                  </span>
+                  {previous && !upcoming ? (
+                    <TrendBadge
+                      current={bill.total}
+                      previous={previous.total}
+                      label={`vs ${formatMonth(previous.month)}`}
+                      className="mt-0.5"
+                    />
+                  ) : null}
+                </div>
               </div>
               <div className="mt-1 flex items-center justify-between gap-3 text-xs text-muted-foreground">
                 <span>{bill.frequency} compras</span>
@@ -89,6 +128,7 @@ export function BillsTable({ bills }: { bills: Bill[] }) {
                 <TableHead className="sticky left-0 z-10 bg-card">Mês</TableHead>
                 <TableHead className="text-right">Valor pago</TableHead>
                 <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">vs anterior</TableHead>
                 <TableHead className="text-right">Compras</TableHead>
                 {categories.map((category) => (
                   <TableHead key={category} className="text-right">
@@ -98,16 +138,28 @@ export function BillsTable({ bills }: { bills: Bill[] }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((bill) => (
+              {rows.map(({ bill, previous, upcoming }) => (
                 <TableRow key={bill.month}>
-                  <TableCell className="tabular sticky left-0 z-10 bg-card font-medium whitespace-nowrap">
-                    {formatMonth(bill.month)}
+                  <TableCell className="sticky left-0 z-10 bg-card font-medium whitespace-nowrap">
+                    <span className="tabular">{formatMonth(bill.month)}</span>
+                    {upcoming && (
+                      <Badge variant="outline" className="ml-2 font-normal">
+                        em aberto
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell className="tabular text-right whitespace-nowrap text-muted-foreground">
                     {bill.valuePaid ? currency(bill.valuePaid) : '–'}
                   </TableCell>
                   <TableCell className="tabular text-right font-medium whitespace-nowrap">
                     {currency(bill.total)}
+                  </TableCell>
+                  <TableCell className="text-right whitespace-nowrap">
+                    {previous && !upcoming ? (
+                      <TrendBadge current={bill.total} previous={previous.total} />
+                    ) : (
+                      <span className="text-xs text-muted-foreground/40">–</span>
+                    )}
                   </TableCell>
                   <TableCell className="tabular text-right text-muted-foreground">
                     {bill.frequency}
