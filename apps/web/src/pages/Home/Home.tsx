@@ -2,8 +2,8 @@ import { Alert, Box, Button, Grid, Paper, SelectChangeEvent, Stack } from '@mui/
 import { styled } from '@mui/material/styles';
 import type { Dayjs } from 'dayjs';
 import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
+import { PageHeader } from '@/components/layout/app-shell';
 import { listPurchases } from '../../api/client';
-import { AppBar } from '../../components/layout/AppBar';
 import { BarChart } from '../../components/shared/BarChart';
 import { MonthPicker } from '../../components/shared/MonthPicker';
 import { MultiSelectInput } from '../../components/shared/MultiSelectInput';
@@ -129,10 +129,12 @@ function Home() {
   }, [fetchData]);
 
   return (
-    <AppBar>
-      <Box sx={{ p: 2 }}>
-        <h1>Compras</h1>
-
+    <>
+      <PageHeader
+        title="Compras"
+        description="Todos os lançamentos, filtráveis por categoria, título e fatura."
+      />
+      <Box>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             Não foi possível carregar as compras: {error}. A API está no ar em{' '}
@@ -198,7 +200,7 @@ function Home() {
           )}
         </Grid>
       </Box>
-    </AppBar>
+    </>
   );
 }
 

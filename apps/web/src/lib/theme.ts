@@ -5,7 +5,19 @@
  * claro é a exceção — o atributo só é escrito no <html> quando o tema é claro
  * ou quando o usuário escolheu explicitamente. `system` acompanha o SO.
  */
+import { createContext } from 'react';
+
 export type Theme = 'dark' | 'light' | 'system';
+
+export interface ThemeContextValue {
+  theme: Theme;
+  /** `system` já resolvido para o tema efetivo. */
+  resolved: 'dark' | 'light';
+  setTheme: (theme: Theme) => void;
+}
+
+/** Mora aqui, e não junto do provider, para o fast-refresh não perder o módulo. */
+export const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 const STORAGE_KEY = 'expense-analyzer:theme';
 

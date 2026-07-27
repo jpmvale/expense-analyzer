@@ -1,7 +1,7 @@
 import { Alert } from '@mui/material';
 import { useEffect, useMemo, useState } from 'react';
+import { PageHeader } from '@/components/layout/app-shell';
 import { listBills } from '../../api/client';
-import { AppBar } from '../../components/layout/AppBar';
 import { Table } from '../../components/shared/Table';
 import type Bill from '../../interface/bill';
 import { buildBillColumns } from '../../lib/billColumns';
@@ -20,10 +20,18 @@ const Bills = () => {
   const columns = useMemo(() => buildBillColumns(rows), [rows]);
 
   return (
-    <AppBar>
-      {error && <Alert severity="error">Não foi possível carregar as faturas: {error}</Alert>}
+    <>
+      <PageHeader
+        title="Faturas"
+        description="Uma linha por mês de referência, com o peso de cada categoria."
+      />
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Não foi possível carregar as faturas: {error}
+        </Alert>
+      )}
       <Table columns={columns} rows={rows} />
-    </AppBar>
+    </>
   );
 };
 

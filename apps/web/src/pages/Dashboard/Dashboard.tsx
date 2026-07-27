@@ -1,17 +1,23 @@
-import { Alert, Box } from '@mui/material';
-import { AppBar } from '../../components/layout/AppBar';
+import { ConstructionIcon } from 'lucide-react';
+import { PageHeader } from '@/components/layout/app-shell';
+import { Card, CardContent } from '@/components/ui/card';
 
-/** Página ainda não implementada — os gráficos hoje vivem em /purchases. */
+/** Vira a visão geral da app na etapa 6 da migração. */
 const Dashboard = () => {
   return (
-    <AppBar>
-      <Box sx={{ p: 2 }}>
-        <h1>Dashboard</h1>
-        <Alert severity="info">
-          Ainda não implementado. Os gráficos por mês e por categoria estão na página de Compras.
-        </Alert>
-      </Box>
-    </AppBar>
+    <>
+      <PageHeader
+        title="Visão geral"
+        description="Um retrato do mês corrente e da evolução dos seus gastos."
+      />
+      <Card>
+        <CardContent className="flex items-center gap-3 pt-4 text-sm text-muted-foreground sm:pt-5">
+          <ConstructionIcon className="size-4 shrink-0" />
+          Ainda não implementada. Por enquanto, os gráficos por mês e por categoria estão em
+          Compras.
+        </CardContent>
+      </Card>
+    </>
   );
 };
 

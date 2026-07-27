@@ -1,0 +1,111 @@
+import { FileTextIcon, LayoutDashboardIcon, MenuIcon, ReceiptTextIcon, WalletIcon } from 'lucide-react';
+import { useState } from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { cn } from '@/lib/utils';
+
+const NAV = [
+  { to: '/dashboard', label: 'Visão geral', Icon: LayoutDashboardIcon },
+  { to: '/purchases', label: 'Compras', Icon: ReceiptTextIcon },
+  { to: '/bills', label: 'Faturas', Icon: FileTextIcon },
+];
+
+function Wordmark() {
+  return (
+    <NavLink to="/" className="flex items-center gap-2 font-medium tracking-tight">
+      <WalletIcon className="size-4 text-primary" />
+      <span>
+        expense<span className="text-muted-foreground">/analyzer</span>
+      </span>
+    </NavLink>
+  );
+}
+
+export function AppShell() {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  return (
+    <div className="min-h-dvh bg-background">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:px-6">
+          {/* Mobile: menu antes do wordmark, como manda o hábito de leitura. */}
+          <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden" aria-label="Abrir menu">
+                <MenuIcon />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left">
+              <SheetTitle className="text-sm font-medium">
+                <Wordmark />
+              </SheetTitle>
+              <nav className="mt-2 flex flex-col gap-1">
+                {NAV.map(({ to, label, Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    onClick={() => setMenuOpen(false)}
+                    className={({ isActive }) =>
+                      cn(
+                        'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+                        isActive
+                          ? 'bg-accent font-medium text-foreground'
+                          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                      )
+                    }
+                  >
+                    <Icon className="size-4" />
+                    {label}
+                  </NavLink>
+                ))}
+              </nav>
+            </SheetContent>
+          </Sheet>
+
+          <div className="text-sm">
+            <Wordmark />
+          </div>
+
+          <nav className="hidden items-center gap-1 md:flex">
+            {NAV.map(({ to, label }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  cn(
+                    'rounded-md px-3 py-1.5 text-sm transition-colors',
+                    isActive
+                      ? 'bg-accent font-medium text-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )
+                }
+              >
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+
+/** Cabeçalho de página: título e, opcionalmente, uma linha de apoio. */
+export function PageHeader({ title, description }: { title: string; description?: string }) {
+  return (
+    <div className="mb-6">
+      <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+      {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
+    </div>
+  );
+}
