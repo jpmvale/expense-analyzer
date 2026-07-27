@@ -1,31 +1,33 @@
-import { useMemo } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChartTooltip } from '@/components/charts/chart-tooltip';
-import type ChartData from '@/interface/chartData';
 import { compactCurrency, formatMonth } from '@/lib/utils';
 
+/** Um mês do gráfico. Serve tanto para compras agrupadas quanto para faturas. */
+export interface MonthlyPoint {
+  month: string;
+  total: number;
+  count: number;
+}
+
 /**
- * Gasto por mês. Uma série só, então um tom só e sem legenda — o título já diz
- * o que a barra é. A grade é recuada de propósito: o dado é a figura.
+ * Gasto por mês. Uma série só, então um tom só e sem legenda — o título da seção
+ * já diz o que a barra é. A grade é recuada de propósito: o dado é a figura.
  */
-export function MonthlySpendChart({ data, height = 300 }: { data: ChartData[]; height?: number }) {
-  const points = useMemo(
-    () =>
-      data.map((group) => ({
-        month: group.value,
-        label: formatMonth(group.value),
-        total: Number(group.data.reduce((acc, p) => acc + p.amount, 0).toFixed(2)),
-        count: group.data.length,
-      })),
-    [data],
-  );
+export function MonthlySpendChart({
+  points,
+  height = 300,
+}: {
+  points: MonthlyPoint[];
+  height?: number;
+}) {
+  const data = points.map((point) => ({ ...point, label: formatMonth(point.month) }));
 
   // Com muitos meses, rotular todos vira um borrão: mostra um a cada N.
-  const tickInterval = Math.max(0, Math.ceil(points.length / 12) - 1);
+  const tickInterval = Math.max(0, Math.ceil(data.length / 12) - 1);
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+      <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
         <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
         <XAxis
           dataKey="label"

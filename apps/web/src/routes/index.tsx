@@ -11,7 +11,7 @@ const router = createBrowserRouter([
   {
     element: <AppShell />,
     children: [
-      { path: '/', element: <Navigate to="/purchases" replace /> },
+      { path: '/', element: <Navigate to="/dashboard" replace /> },
       { path: '/purchases', element: <Home /> },
       { path: '/bills', element: <Bills /> },
       { path: '/dashboard', element: <Dashboard /> },

@@ -95,7 +95,15 @@ function Home() {
     };
   }, [selectedCategories, debouncedTitle, month]);
 
-  const dataByMonth = useMemo(() => groupByMonth(purchases), [purchases]);
+  const pointsByMonth = useMemo(
+    () =>
+      groupByMonth(purchases).map((group) => ({
+        month: group.value,
+        total: Number(group.data.reduce((acc, p) => acc + p.amount, 0).toFixed(2)),
+        count: group.data.length,
+      })),
+    [purchases],
+  );
   const dataByCategory = useMemo(() => groupByCategory(purchases), [purchases]);
 
   return (
@@ -175,7 +183,7 @@ function Home() {
                   <CardTitle>Gasto por mês</CardTitle>
                 </CardHeader>
                 <div className="pr-4 pb-3 pl-1">
-                  <MonthlySpendChart data={dataByMonth} height={300} />
+                  <MonthlySpendChart points={pointsByMonth} height={300} />
                 </div>
               </Card>
             )}
