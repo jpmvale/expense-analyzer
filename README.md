@@ -415,7 +415,8 @@ Uma entrada por mês de referência, em ordem cronológica.
 
 ```jsonc
 {
-  "month": "2025-02",
+  "month": "2025-02",           // mês do VENCIMENTO, não o das compras
+  "cycleEnd": "2025-01-26",     // último dia de compra do ciclo, inferido das datas
   "valuePaid": 12150.23,        // a linha de categoria `payment` do mês
   "total": 12150.23,            // gastos menos estornos; sem o pagamento e sem os encargos
   "charges": 141.16,            // juros, multa e saldo rolado — fora do total, mas não escondidos
