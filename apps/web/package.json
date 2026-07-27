@@ -1,5 +1,5 @@
 {
-  "name": "@nubank-analysis/web",
+  "name": "@expense/web",
   "version": "1.0.0",
   "description": "Dashboard das compras e faturas do cartão",
   "private": true,

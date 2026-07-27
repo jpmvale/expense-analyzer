@@ -41,13 +41,16 @@ function ResponsiveAppBar({ children }: { children: ReactNode }) {
                 mr: 2,
                 fontFamily: 'monospace',
                 fontWeight: 700,
-                letterSpacing: '.2rem',
+                // Wordmark mais longo que o antigo "FATURAS": o letter-spacing
+                // cai no mobile pra não empurrar o menu sanduíche pra fora.
+                letterSpacing: { xs: '.05rem', md: '.15rem' },
+                fontSize: { xs: '1rem', md: '1.25rem' },
                 color: 'inherit',
                 textDecoration: 'none',
                 flexGrow: { xs: 1, md: 0 },
               }}
             >
-              FATURAS
+              EXPENSE ANALYZER
             </Typography>
 
             {/* Mobile: menu sanduíche */}

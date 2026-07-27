@@ -1,5 +1,5 @@
 {
-  "name": "@nubank-analysis/extractor",
+  "name": "@expense/extractor",
   "version": "1.0.0",
   "description": "Lê as faturas em CSV (Google Drive ou pasta local) e grava as compras no MongoDB",
   "private": true,

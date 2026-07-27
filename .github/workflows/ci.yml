@@ -56,7 +56,7 @@ jobs:
 
       - name: subir a API e consultar os endpoints
         run: |
-          pnpm --filter @nubank-analysis/api start &
+          pnpm --filter @expense/api start &
           for i in $(seq 1 30); do
             curl -sf http://localhost:3000/health && break
             sleep 1

@@ -19,7 +19,7 @@ async function bootstrap() {
   );
 
   const config = new DocumentBuilder()
-    .setTitle('Nubank Credit Card Analysis')
+    .setTitle('Expense Analyzer')
     .setDescription('Compras e faturas do cartão de crédito, agregadas por mês e categoria.')
     .setVersion('1.0')
     .build();

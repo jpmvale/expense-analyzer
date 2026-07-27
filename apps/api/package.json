@@ -1,5 +1,5 @@
 {
-  "name": "@nubank-analysis/api",
+  "name": "@expense/api",
   "version": "1.0.0",
   "description": "API que serve as compras e as faturas do cartão a partir do MongoDB",
   "private": true,

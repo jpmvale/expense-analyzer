@@ -1,9 +1,12 @@
-# Nubank Credit Card Analysis
+# Expense Analyzer
 
-Dashboard pessoal pra analisar o histórico do cartão de crédito. As faturas em **CSV** (exportadas
-do Nubank) viram um banco de compras no **MongoDB**, uma **API NestJS** agrega isso por mês e por
-categoria, e um **front em React** mostra tabelas e gráficos: quanto você gastou, com o quê, e como
-isso evolui mês a mês.
+Dashboard pessoal pra analisar o histórico de gastos do cartão de crédito. As faturas em **CSV**
+viram um banco de compras no **MongoDB**, uma **API NestJS** agrega isso por mês e por categoria, e
+um **front em React** mostra tabelas e gráficos: quanto você gastou, com o quê, e como isso evolui
+mês a mês.
+
+O parser não é acoplado a nenhum emissor — lê qualquer CSV com as colunas `date,title,amount`.
+Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 
 ```
   faturas .csv                  MongoDB                  API (Nest)              Front (React)
@@ -127,9 +130,9 @@ Monorepo **pnpm workspaces + Turborepo**, TypeScript em tudo.
 
 ```
 apps/
-  api/         @nubank-analysis/api        NestJS + Mongoose — endpoints e agregações
-  web/         @nubank-analysis/web        React + Vite + MUI — tabelas e gráficos
-  extractor/   @nubank-analysis/extractor  CSV (Drive ou disco) → MongoDB
+  api/         @expense/api        NestJS + Mongoose — endpoints e agregações
+  web/         @expense/web        React + Vite + MUI — tabelas e gráficos
+  extractor/   @expense/extractor  CSV (Drive ou disco) → MongoDB
 bills/                                     seus CSVs quando EXTRACTOR_SOURCE=local
 docker-compose.yml                         MongoDB local (+ mongo-express opcional)
 ```

@@ -1,5 +1,5 @@
 {
-  "name": "nubank-credit-card-analysis",
+  "name": "expense-analyzer",
   "version": "1.0.0",
   "private": true,
   "packageManager": "pnpm@10.15.0",
@@ -13,8 +13,8 @@
     "typecheck": "turbo run typecheck",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
-    "db:seed": "pnpm --filter @nubank-analysis/extractor seed",
-    "extract": "pnpm --filter @nubank-analysis/extractor start"
+    "db:seed": "pnpm --filter @expense/extractor seed",
+    "extract": "pnpm --filter @expense/extractor start"
   },
   "devDependencies": {
     "turbo": "^2.5.6",
