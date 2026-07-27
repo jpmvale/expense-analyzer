@@ -25,8 +25,9 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | **Ingestão** | Lê as faturas em CSV do **Google Drive** ou de uma **pasta local**, categoriza as compras e grava no MongoDB. Regravar uma fatura sobrescreve o mês inteiro — rodar de novo é idempotente. |
 | **Categorização** | Usa a categoria do CSV quando ela diz alguma coisa — `outros` **não** conta (veja abaixo). Senão, herda de um título já categorizado numa fatura anterior, tenta palavras-chave (uber/99app → transporte, ifood → restaurante) e só então cai em `outros`. Códigos internos do emissor viram rótulos do domínio: `reversal_*` → `estorno`, `tax_*` → `impostos`, `bnpl_*` → `parcelado`. |
 | **Compras** | Lista filtrável por **categoria**, **título** (busca parcial) e **mês da fatura**, com total, quantidade e ticket médio. Tabela ordenável e paginada. |
-| **Gráficos** | Gasto por mês (barras) e por categoria (pizza), acompanhando os filtros aplicados. |
-| **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. |
+| **Gráficos** | Gasto por mês e por categoria, em barras, acompanhando os filtros aplicados. |
+| **Visão geral** | A home: última fatura fechada com a variação contra o mês anterior, média dos doze meses anteriores, total do ano e a composição do mês. Parcelas já lançadas em faturas futuras aparecem à parte, fora dos agregados. |
+| **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês, com o fundo da célula proporcional ao peso. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. |
 | **API** | REST documentada em OpenAPI/Swagger, com validação dos filtros. |
 
 ---
@@ -136,7 +137,7 @@ Monorepo **pnpm workspaces + Turborepo**, TypeScript em tudo.
 ```
 apps/
   api/         @expense/api        NestJS + Mongoose — endpoints e agregações
-  web/         @expense/web        React + Vite + MUI — tabelas e gráficos
+  web/         @expense/web        React + Vite + shadcn/ui — tabelas e gráficos
   extractor/   @expense/extractor  CSV (Drive ou disco) → MongoDB
 bills/                                     seus CSVs quando EXTRACTOR_SOURCE=local
 docker-compose.yml                         MongoDB local (+ mongo-express opcional)
@@ -145,7 +146,7 @@ docker-compose.yml                         MongoDB local (+ mongo-express opcion
 | Camada | Tecnologia |
 | --- | --- |
 | **API** | NestJS 11, Mongoose 8, class-validator, Swagger |
-| **Front** | React 19, Vite 7, MUI 7, MUI X Charts 8, React Router 7 |
+| **Front** | React 19, Vite 7, Tailwind CSS 4, shadcn/ui (Radix + lucide), Recharts, React Router 7 |
 | **Extractor** | Node + tsx, driver oficial do MongoDB 6, googleapis |
 | **Banco** | MongoDB 8 (Docker) ou MongoDB Atlas |
 | **Monorepo** | pnpm workspaces, Turborepo, ESLint 9 (flat config), Prettier |
@@ -247,7 +248,8 @@ Para inspecionar o banco pelo navegador: `docker compose --profile tools up -d` 
 - Os testes cobrem as funções puras onde moram as regras: o parser de CSV, a montagem do filtro do
   Mongo e o agrupamento dos gráficos. Não há testes de integração — o CI compensa com lint,
   typecheck, build e um smoke test da API contra um MongoDB de verdade.
-- A página **/dashboard** é um esqueleto — os gráficos vivem em `/purchases`.
+- A interface é **escura por padrão**, com alternador claro/escuro/sistema. Os tokens vivem em
+  `apps/web/src/assets/globals.css`, no padrão CSS-first do Tailwind 4.
 
 ## Licença
 
