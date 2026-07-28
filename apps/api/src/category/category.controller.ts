@@ -5,6 +5,7 @@ import {
   ConsolidateDto,
   CreateCategoryDto,
   CreateRuleDto,
+  DismissConsolidationDto,
   RenameCategoryDto,
 } from './dto/category.dto';
 
@@ -64,6 +65,25 @@ export class CategoryRuleController {
   })
   listConsolidations() {
     return this.categoryService.listConsolidations();
+  }
+
+  /*
+   * Descartar e restaurar são dois `POST` com corpo, e não um `DELETE` com o par
+   * na URL: o trecho carrega espaço e `*` (`shopee *`), que num path só funciona
+   * escapado — e `DELETE` não leva corpo.
+   */
+  @Post('consolidation/dismiss')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Esconde uma sugestão de consolidação da lista' })
+  dismissConsolidation(@Body() dto: DismissConsolidationDto) {
+    return this.categoryService.dismissConsolidation(dto);
+  }
+
+  @Post('consolidation/restore')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Devolve à lista uma sugestão descartada' })
+  restoreConsolidation(@Body() dto: DismissConsolidationDto) {
+    return this.categoryService.restoreConsolidation(dto);
   }
 
   @Post()

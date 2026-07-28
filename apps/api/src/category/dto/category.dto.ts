@@ -43,6 +43,21 @@ export class ConsolidateDto {
   category: string;
 }
 
+export class DismissConsolidationDto {
+  @ApiProperty({ description: 'A categoria da sugestão', example: 'Shopee' })
+  @IsString()
+  @IsNotEmpty()
+  category: string;
+
+  @ApiProperty({
+    description: 'O trecho da sugestão, exatamente como veio de `GET /category-rule/consolidation`',
+    example: 'shopee',
+  })
+  @IsString()
+  @IsNotEmpty()
+  value: string;
+}
+
 export class CreateRuleDto {
   @ApiProperty({
     description:

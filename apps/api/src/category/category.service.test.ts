@@ -19,7 +19,7 @@ describe('CategoryService', () => {
 
   before(async () => {
     db = await startTestDb();
-    service = new CategoryService(db.purchases, db.categories, db.rules);
+    service = new CategoryService(db.purchases, db.categories, db.rules, db.dismissals);
   });
 
   after(async () => db.stop());
@@ -352,6 +352,55 @@ describe('CategoryService', () => {
 
       assert.ok(bloqueada);
       assert.deepEqual(bloqueada.conflicts, [{ title: 'Shopee *Drogaria', category: 'saúde' }]);
+    });
+
+    // Marcar em vez de filtrar: é o que permite à tela mostrar as descartadas
+    // encolhidas e oferecer o desfazer. Sumir aqui deixaria a decisão sem volta.
+    it('marca a descartada em vez de tirá-la da lista, e o restaurar desfaz', async () => {
+      for (const sufixo of ['Alfa', 'Beta', 'Gama']) {
+        await db.purchases.create([purchase(`Shopee *${sufixo}`, 'outros')]);
+        await service.upsertRule({ kind: 'exact', value: `Shopee *${sufixo}`, category: 'Shopee' });
+      }
+
+      const [antes] = await service.listConsolidations();
+      assert.equal(antes.dismissed, false);
+
+      await service.dismissConsolidation({ category: antes.category, value: antes.value });
+      // Duas vezes: o botão pode ser clicado de novo antes de a lista recarregar,
+      // e o índice único derrubaria a segunda se o upsert não fosse idempotente.
+      await service.dismissConsolidation({ category: antes.category, value: antes.value });
+
+      const depois = await service.listConsolidations();
+      assert.equal(depois.length, 1);
+      assert.equal(depois[0].dismissed, true);
+
+      await service.restoreConsolidation({ category: antes.category, value: antes.value });
+      assert.equal((await service.listConsolidations())[0].dismissed, false);
+    });
+
+    // O descarte é por par: esconder a de uma categoria não pode esconder a de
+    // outra que por acaso proponha o mesmo trecho.
+    it('descarta só o par (categoria, trecho) que recebeu', async () => {
+      for (const sufixo of ['Alfa', 'Beta', 'Gama']) {
+        await db.purchases.create([purchase(`Shopee *${sufixo}`, 'outros')]);
+        await service.upsertRule({ kind: 'exact', value: `Shopee *${sufixo}`, category: 'Shopee' });
+        await db.purchases.create([purchase(`Uber *${sufixo}`, 'outros')]);
+        await service.upsertRule({ kind: 'exact', value: `Uber *${sufixo}`, category: 'transporte' });
+      }
+
+      const todas = await service.listConsolidations();
+      const shopee = todas.find((s) => s.category === 'Shopee');
+      assert.ok(shopee);
+      await service.dismissConsolidation({ category: shopee.category, value: shopee.value });
+
+      const depois = await service.listConsolidations();
+      assert.deepEqual(
+        depois.map((s) => [s.category, s.dismissed]).sort(),
+        [
+          ['Shopee', true],
+          ['transporte', false],
+        ].sort(),
+      );
     });
   });
 

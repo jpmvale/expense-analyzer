@@ -11,11 +11,16 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Category, CategoryDocument } from '../schemas/category.schema';
 import { CategoryRule, CategoryRuleDocument } from '../schemas/category-rule.schema';
+import {
+  ConsolidationDismissal,
+  ConsolidationDismissalDocument,
+} from '../schemas/consolidation-dismissal.schema';
 import { Purchase, PurchaseDocument } from '../schemas/purchase.schema';
 import {
   ConsolidateDto,
   CreateCategoryDto,
   CreateRuleDto,
+  DismissConsolidationDto,
   RenameCategoryDto,
 } from './dto/category.dto';
 import { createPurchaseStore } from './purchase-store';
@@ -56,12 +61,29 @@ interface TitleRow extends RuledTitle {
   purchases: number;
 }
 
+/** Uma sugestão de consolidação, com a decisão de escondê-la já aplicada. */
+export interface ConsolidationSuggestionView extends ConsolidationSuggestion<CategoryRuleDocument> {
+  dismissed: boolean;
+}
+
+/**
+ * Chave estável para casar sugestão e descarte — os dois lados usam o mesmo par.
+ *
+ * O separador é um caractere que nem categoria nem trecho podem conter, senão
+ * `("shopee a", "b")` e `("shopee", "a b")` cairiam na mesma chave.
+ */
+function dismissalKey(category: string, value: string): string {
+  return `${category}\u0000${value}`;
+}
+
 @Injectable()
 export class CategoryService {
   constructor(
     @InjectModel(Purchase.name) private readonly purchaseModel: Model<PurchaseDocument>,
     @InjectModel(Category.name) private readonly categoryModel: Model<CategoryDocument>,
     @InjectModel(CategoryRule.name) private readonly ruleModel: Model<CategoryRuleDocument>,
+    @InjectModel(ConsolidationDismissal.name)
+    private readonly dismissalModel: Model<ConsolidationDismissalDocument>,
   ) {}
 
   /**
@@ -246,10 +268,44 @@ export class CategoryService {
    * Devolve também as bloqueadas, com o que elas levariam junto — nesta base é
    * a informação mais útil da análise, porque as maiores alavancas são
    * justamente as que têm conflito.
+   *
+   * As descartadas vêm junto, marcadas. Filtrá-las aqui deixaria a tela sem como
+   * dizer que existem nem como desfazer o descarte — e uma decisão que não dá
+   * para rever é pior que o incômodo que ela resolve.
    */
-  async listConsolidations(): Promise<Array<ConsolidationSuggestion<CategoryRuleDocument>>> {
-    const [rules, titles] = await Promise.all([this.listRules(), this.titleRows()]);
-    return suggestConsolidations(rules, titles);
+  async listConsolidations(): Promise<ConsolidationSuggestionView[]> {
+    const [rules, titles, dismissed] = await Promise.all([
+      this.listRules(),
+      this.titleRows(),
+      this.dismissalModel.find().exec(),
+    ]);
+
+    const hidden = new Set(dismissed.map(({ category, value }) => dismissalKey(category, value)));
+
+    return suggestConsolidations(rules, titles).map((suggestion) => ({
+      ...suggestion,
+      dismissed: hidden.has(dismissalKey(suggestion.category, suggestion.value)),
+    }));
+  }
+
+  /**
+   * Esconde uma sugestão que o usuário julgou que não vale a pena.
+   *
+   * Guarda o par (categoria, trecho), e não um id: a sugestão não é documento —
+   * ela é recalculada a cada requisição a partir das regras e das compras. O par
+   * é o que sobrevive à próxima fatura mudar os números dela.
+   *
+   * O descarte não impede consolidar depois: some da lista, não da API.
+   */
+  async dismissConsolidation({ category, value }: DismissConsolidationDto): Promise<void> {
+    await this.dismissalModel
+      .updateOne({ category, value }, { $setOnInsert: { category, value } }, { upsert: true })
+      .exec();
+  }
+
+  /** Devolve a sugestão à lista. Descartar o que não devia é barato de desfazer. */
+  async restoreConsolidation({ category, value }: DismissConsolidationDto): Promise<void> {
+    await this.dismissalModel.deleteOne({ category, value }).exec();
   }
 
   /**

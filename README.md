@@ -608,9 +608,11 @@ requisição e devolve quantas compras mudaram.
 | `PATCH /category/:name` | Renomeia. Apontar para uma categoria que já existe **mescla** as duas |
 | `DELETE /category/:name` | Apaga, se não estiver em uso. Para esvaziar uma categoria, mescle-a em outra |
 | `GET /category-rule` | As suas regras, cada uma com quantas compras e títulos ela **governa** hoje |
-| `GET /category-rule/consolidation` | Onde um punhado de regras `exact` viraria uma `contains` — [critério abaixo](#onde-dá-para-juntar-regras) |
+| `GET /category-rule/consolidation` | Onde um punhado de regras `exact` viraria uma `contains` — [critério abaixo](#onde-dá-para-juntar-regras). Vem com `dismissed` marcado nas que o usuário escondeu |
 | `POST /category-rule` | Cria ou atualiza a regra. Reclassificar o mesmo título edita a que já existe, nunca empilha uma segunda |
 | `POST /category-rule/consolidate` | Troca as `exact` cobertas pelo trecho por uma `contains`, reaplicando **uma vez** |
+| `POST /category-rule/consolidation/dismiss` | Esconde uma sugestão da lista, pelo par `(categoria, trecho)` — não some da API, só ganha `dismissed: true` |
+| `POST /category-rule/consolidation/restore` | Desfaz o descarte acima |
 | `DELETE /category-rule/:id` | Apaga a regra e devolve as compras dela à `sourceCategory` |
 | `POST /category-rule/reapply` | Reclassifica a base com as regras e a lista de encargos de agora, sem reextrair. É o gatilho para uma mudança na lista de palavras-chave de encargo valer no que já está no banco |
 
@@ -657,9 +659,13 @@ deliberada.
   ainda que "spotify" seja o que os une.
 - **Conflito é binário.** Um candidato que cobre 50 regras e conflita com 1 é tão bloqueado quanto o
   que conflita com 22 — e o primeiro seria resolvido criando uma `exact` para a exceção.
-- **Bloqueio é aviso, não trava.** `POST /category-rule/consolidate` aplica o que mandarem; a recusa
-  mora na tela, que não oferece o botão. Consolidar é uma decisão informada, e o que não se pode é
-  fazê-la em silêncio.
+- **Bloqueio é aviso, não trava.** `POST /category-rule/consolidate` sempre aplicou o que mandarem —
+  a tela é quem decide o que mostrar. O botão de aplicar mesmo assim mora dentro da lista de
+  conflitos expandida, e só ali: consolidar uma bloqueada é uma decisão informada, não a mesma coisa
+  que consolidar uma seguindo, e o que não se pode é fazê-la sem ver o preço primeiro.
+- **Descartar não é decisão final.** Quem julga que uma sugestão não vale a pena pode escondê-la sem
+  perder a chance de rever depois — ela continua na resposta da API, marcada, e a tela guarda um
+  atalho para desfazer.
 
 ### `GET /health`
 

@@ -157,6 +157,24 @@ export function consolidateRules(suggestion: {
 }
 
 /**
+ * Esconde a sugestão da lista, pelo par que a identifica. Vai no corpo porque o
+ * trecho carrega espaço e `*` (`shopee *`), que num path só funciona escapado.
+ */
+export function dismissConsolidation(suggestion: {
+  value: string;
+  category: string;
+}): Promise<void> {
+  return sendJson('POST', '/category-rule/consolidation/dismiss', suggestion);
+}
+
+export function restoreConsolidation(suggestion: {
+  value: string;
+  category: string;
+}): Promise<void> {
+  return sendJson('POST', '/category-rule/consolidation/restore', suggestion);
+}
+
+/**
  * Cria ou atualiza a regra. A API reclassifica na mesma requisição e devolve
  * quantas compras mudaram — é o número que a tela mostra de volta, para a ação
  * ter uma consequência visível mesmo quando a lista não muda de tamanho.
@@ -171,4 +189,12 @@ export function saveRule(rule: {
 
 export function deleteRule(id: string): Promise<ReapplyResult> {
   return request<ReapplyResult>(`/category-rule/${id}`, { method: 'DELETE' });
+}
+
+/**
+ * Reclassifica a base com as regras e a tabela de encargo de agora, sem reextrair.
+ * Idempotente: rodar de novo sem nada ter mudado devolve os três números em zero.
+ */
+export function reapplyRules(): Promise<ReapplyResult> {
+  return request<ReapplyResult>('/category-rule/reapply', { method: 'POST' });
 }

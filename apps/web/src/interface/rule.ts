@@ -25,4 +25,6 @@ export interface ConsolidationSuggestion {
    * conteúdo, a sugestão não é aplicável sem uma decisão de quem lê.
    */
   conflicts: Array<{ title: string; category: string }>;
+  /** Sugestão que o usuário mandou esconder. Continua vindo, para dar como desfazer. */
+  dismissed: boolean;
 }

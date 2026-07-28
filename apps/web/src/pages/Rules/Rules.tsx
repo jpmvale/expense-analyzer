@@ -1,4 +1,12 @@
-import { AlertCircleIcon, CheckCircle2Icon, ListChecksIcon, SearchIcon, TagsIcon, XIcon } from 'lucide-react';
+import {
+  AlertCircleIcon,
+  CheckCircle2Icon,
+  ListChecksIcon,
+  RefreshCwIcon,
+  SearchIcon,
+  TagsIcon,
+  XIcon,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ConsolidationPanel } from '@/components/consolidation-panel';
 import { CategoryFilter } from '@/components/filters/category-filter';
@@ -12,13 +20,16 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Category } from '@/interface/category';
 import type { ConsolidationSuggestion, RuleUsage } from '@/interface/rule';
-import { capitalize } from '@/lib/utils';
+import { capitalize, cn } from '@/lib/utils';
 import {
   consolidateRules,
   deleteRule,
+  dismissConsolidation,
   listCategories,
   listConsolidations,
   listRules,
+  reapplyRules,
+  restoreConsolidation,
   saveRule,
 } from '../../api/client';
 
@@ -49,6 +60,7 @@ function Rules() {
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [visible, setVisible] = useState(PAGE_SIZE);
+  const [reapplying, setReapplying] = useState(false);
 
   // As categorias em que dá para apontar uma regra — vêm da API, e não das
   // regras já existentes, porque incluem as que o usuário criou e ainda não usou.
@@ -140,6 +152,63 @@ function Rules() {
   );
 
   /**
+   * Descartar e restaurar não tocam em regra nem em compra — só na lista de
+   * sugestões. Ainda assim passam pelo `run`, porque a lista vem do servidor:
+   * marcar `dismissed` no estado local duplicaria a regra de quem decide o que
+   * aparece, e as duas versões divergiriam na primeira recarga.
+   */
+  const dismiss = useCallback(
+    (suggestion: ConsolidationSuggestion) =>
+      run(async () => {
+        await dismissConsolidation({ value: suggestion.value, category: suggestion.category });
+        return `Sugestão descartada. Ela fica guardada em "descartadas", caso mude de ideia.`;
+      }),
+    [run],
+  );
+
+  const restore = useCallback(
+    (suggestion: ConsolidationSuggestion) =>
+      run(async () => {
+        await restoreConsolidation({ value: suggestion.value, category: suggestion.category });
+        return `Sugestão de volta à lista.`;
+      }),
+    [run],
+  );
+
+  /**
+   * Reclassifica a base contra as regras e a tabela de encargo de agora, sem
+   * reextrair. Quase nunca é preciso — todo caminho da tela já reaplica sozinho
+   * — e serve para o único que não passa por aqui: a tabela de palavras-chave de
+   * encargo mudou no código, num deploy, e ninguém editou regra nenhuma.
+   */
+  const reapply = useCallback(async () => {
+    setReapplying(true);
+    try {
+      await run(async () => {
+        const { classified, restored, financing } = await reapplyRules();
+        if (classified === 0 && restored === 0 && financing === 0) {
+          return 'Nada para reaplicar — a base já batia com as regras e a tabela de encargo.';
+        }
+        const partes = [
+          classified > 0 &&
+            `${classified} ${classified === 1 ? 'compra classificada' : 'compras classificadas'} por uma regra`,
+          restored > 0 &&
+            `${restored} ${restored === 1 ? 'devolvida' : 'devolvidas'} à categoria da fatura`,
+          financing > 0 &&
+            `${financing} ${financing === 1 ? 'entrou ou saiu' : 'entraram ou saíram'} de encargos`,
+        ].filter(Boolean);
+        const aviso =
+          financing > 0
+            ? ' Atenção: encargo fica fora do total gasto — os totais por mês mudaram.'
+            : '';
+        return `Reaplicado. ${partes.join('; ')}.${aviso}`;
+      });
+    } finally {
+      setReapplying(false);
+    }
+  }, [run]);
+
+  /**
    * Muda o destino de uma regra que já existe. Reaproveita o mesmo `POST` que
    * cria: `kind` e `value` ficam iguais, então a API acha a regra pelo par e
    * atualiza a categoria em vez de duplicar — não existe rota própria para isso.
@@ -167,7 +236,18 @@ function Rules() {
       <PageHeader
         title="Regras"
         description="As decisões de classificação que você tomou. Cada uma vale para todas as compras do título, inclusive as das próximas faturas."
-      />
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={reapplying || loading}
+          onClick={reapply}
+          title="Só é preciso depois de um deploy que mudou a tabela de encargo — criar, editar ou apagar uma regra já reaplica sozinho."
+        >
+          <RefreshCwIcon className={cn('size-3.5', reapplying && 'animate-spin')} />
+          Reaplicar regras
+        </Button>
+      </PageHeader>
 
       {error && (
         <Card className="mb-4 flex items-start gap-3 border-destructive/40 p-4 text-sm">
@@ -217,7 +297,12 @@ function Rules() {
         </Card>
       ) : (
         <>
-          <ConsolidationPanel suggestions={suggestions} onApply={consolidate} />
+          <ConsolidationPanel
+            suggestions={suggestions}
+            onApply={consolidate}
+            onDismiss={dismiss}
+            onRestore={restore}
+          />
 
           <NewRuleForm categories={categories} onCreate={createRule} />
 

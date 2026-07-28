@@ -9,6 +9,11 @@ import {
   CategoryRuleDocument,
   CategoryRuleSchema,
 } from '../schemas/category-rule.schema';
+import {
+  ConsolidationDismissal,
+  ConsolidationDismissalDocument,
+  ConsolidationDismissalSchema,
+} from '../schemas/consolidation-dismissal.schema';
 import { Purchase, PurchaseDocument, PurchaseSchema } from '../schemas/purchase.schema';
 import {
   Subscription,
@@ -37,6 +42,7 @@ export interface TestDb {
   purchases: Model<PurchaseDocument>;
   categories: Model<CategoryDocument>;
   rules: Model<CategoryRuleDocument>;
+  dismissals: Model<ConsolidationDismissalDocument>;
   subscriptions: Model<SubscriptionDocument>;
   /** Esvazia as coleções entre um teste e outro, sem derrubar o servidor. */
   clear(): Promise<void>;
@@ -65,6 +71,11 @@ export async function startTestDb(): Promise<TestDb> {
   const purchases = modelFor<PurchaseDocument>(connection, Purchase.name, PurchaseSchema);
   const categories = modelFor<CategoryDocument>(connection, Category.name, CategorySchema);
   const rules = modelFor<CategoryRuleDocument>(connection, CategoryRule.name, CategoryRuleSchema);
+  const dismissals = modelFor<ConsolidationDismissalDocument>(
+    connection,
+    ConsolidationDismissal.name,
+    ConsolidationDismissalSchema,
+  );
   const subscriptions = modelFor<SubscriptionDocument>(
     connection,
     Subscription.name,
@@ -74,18 +85,26 @@ export async function startTestDb(): Promise<TestDb> {
   // O índice único de (kind, value) é parte do contrato da coleção de regras, e
   // o Mongoose só o cria em segundo plano — sem esperar, o primeiro teste que
   // dependesse dele passaria por acidente.
-  await Promise.all([purchases.init(), categories.init(), rules.init(), subscriptions.init()]);
+  await Promise.all([
+    purchases.init(),
+    categories.init(),
+    rules.init(),
+    dismissals.init(),
+    subscriptions.init(),
+  ]);
 
   return {
     purchases,
     categories,
     rules,
+    dismissals,
     subscriptions,
     async clear() {
       await Promise.all([
         purchases.deleteMany({}),
         categories.deleteMany({}),
         rules.deleteMany({}),
+        dismissals.deleteMany({}),
         subscriptions.deleteMany({}),
       ]);
     },

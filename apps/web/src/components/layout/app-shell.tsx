@@ -8,7 +8,7 @@ import {
   TagsIcon,
   WalletIcon,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
@@ -112,12 +112,23 @@ export function AppShell() {
   );
 }
 
-/** Cabeçalho de página: título e, opcionalmente, uma linha de apoio. */
-export function PageHeader({ title, description }: { title: string; description?: string }) {
+/** Cabeçalho de página: título, opcionalmente uma linha de apoio, e uma ação à direita. */
+export function PageHeader({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children?: ReactNode;
+}) {
   return (
-    <div className="mb-6">
-      <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
-      {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+        {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
+      </div>
+      {children}
     </div>
   );
 }
