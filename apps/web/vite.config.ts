@@ -18,6 +18,12 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    strictPort: false,
+    // Falha em vez de escolher outra porta. Com o fallback ligado, subir um
+    // segundo `pnpm dev` sem derrubar o primeiro dava um servidor na 5174 que
+    // ninguém abria, enquanto a 5173 continuava servida pela árvore antiga — e
+    // o sintoma era testar contra um processo que não era o que se tinha
+    // acabado de iniciar. O front também aponta para a API na 3000 por
+    // `VITE_API_URL`, então mudar de porta sozinho nunca é o que se quer aqui.
+    strictPort: true,
   },
 });

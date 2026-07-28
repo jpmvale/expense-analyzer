@@ -72,7 +72,11 @@ pnpm dev
 Com os dados de exemplo você já tem a app inteira funcionando. Para usar as **suas** faturas, veja
 [Carregando suas faturas](#carregando-suas-faturas).
 
-> **Porta 3000 ocupada?** Mude `PORT` no `.env` e ajuste `VITE_API_URL` para a mesma porta.
+> **Porta ocupada?** Os dois servidores falham em vez de escolher outra porta sozinhos. Se a 3000
+> estiver tomada, mude `PORT` no `.env` e ajuste `VITE_API_URL` para a mesma porta; se for a 5173,
+> quase sempre é um `pnpm dev` que ficou de pé — `lsof -nP -iTCP:5173 -sTCP:LISTEN` mostra qual.
+> Falhar aqui é deliberado: com o fallback ligado, um segundo `pnpm dev` subia na 5174 enquanto a
+> 5173 continuava servida pelo processo antigo, e você acabava testando contra o servidor errado.
 
 ---
 
@@ -720,8 +724,10 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
   corrigi-las ainda depende de um `pnpm extract` — ou de uma regra sua, que resolve caso a caso e
   ganha da tabela. A diferença é deliberada: `sourceCategory` também guarda a categoria que o emissor
   mandou e a memória por título, e uma palavra-chave genérica não deve atropelar as duas.
-- **Não há tela para o reapply.** A rota existe e é idempotente, mas quem quiser usá-la precisa de um
-  `curl` — na interface, a reclassificação só acontece de carona numa mudança de regra.
+- **Não há tela para o reapply.** Na interface, a reclassificação só acontece de carona numa mudança
+  de regra; para rodá-la sozinha existe o [`pnpm reapply`](#quando-rodar-pnpm-reapply), que é
+  idempotente. O gatilho dela não é uma ação de usuário — é um deploy que mexeu na tabela de
+  encargo —, então a linha de comando é o lugar certo, mas quem só usa a tela não tem como chamá-la.
 - **A reaplicação de regras varre a coleção inteira a cada mudança**, e isso é uma escolha — é o que
   a mantém idempotente. Numa base pessoal some no tempo da requisição; veja
   [Escala](#escala-o-que-foi-medido) para os números. `/purchase` já não faz isso: pagina, ordena e
