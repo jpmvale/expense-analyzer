@@ -20,9 +20,13 @@ import { CategoryBreakdown } from '@/components/category-breakdown';
 import { MonthlySpendChart } from '@/components/charts/monthly-spend-chart';
 import { CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { fillMonthGaps } from '@/lib/monthSeries';
+import { DEFAULT_SORT, PAGE_SIZES, type Sort } from '@/lib/purchaseSort';
 import { listBills, listCategories, listPurchases, saveRule } from '../../api/client';
-import { groupByCategory, groupByMonth } from '../../lib/groupPurchases';
 import type { Category } from '../../interface/category';
+import type { MonthPoint } from '../../interface/listPurchase';
+// Renomeado porque o componente homônimo já ocupa o nome neste arquivo.
+import type { CategoryBreakdown as CategorySlice } from '../../interface/bill';
 import type Purchase from '../../interface/purchase';
 
 /** Quantas categorias o painel lista. Acima disso a cauda não informa nada. */
@@ -38,11 +42,43 @@ function useDebounced<T>(value: T, delay = 350): T {
   return debounced;
 }
 
+/**
+ * O que a API devolve, do jeito que a tela consome.
+ *
+ * `purchases` é a página; `total`, `sum`, `average`, `byMonth` e `byCategory`
+ * descrevem o filtro inteiro. Guardar tudo num estado só é o que impede a tela
+ * de misturar as duas escalas — um `summary` calculado de `purchases` passaria a
+ * descrever cinquenta linhas no dia em que a paginação entrasse, e foi
+ * exatamente esse o risco desta migração.
+ */
+interface Result {
+  purchases: Purchase[];
+  total: number;
+  sum: number;
+  average: number;
+  pageCount: number;
+  byMonth: MonthPoint[];
+  byCategory: CategorySlice[];
+}
+
+const EMPTY: Result = {
+  purchases: [],
+  total: 0,
+  sum: 0,
+  average: 0,
+  pageCount: 1,
+  byMonth: [],
+  byCategory: [],
+};
+
 function Home() {
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [summary, setSummary] = useState({ total: 0, sum: 0, average: 0 });
+  const [result, setResult] = useState<Result>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [sort, setSort] = useState<Sort>(DEFAULT_SORT);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZES[1]);
 
   // As opções de filtro vêm das faturas, não do resultado filtrado: antes a lista
   // de categorias encolhia conforme se filtrava, e não dava para voltar atrás.
@@ -101,16 +137,38 @@ function Home() {
     setReload((n) => n + 1);
   }, []);
 
+  // Mudar filtro ou ordenação volta para a primeira página. Sem isso, refinar a
+  // busca estando na página 7 deixaria a tela vazia com resultados existindo —
+  // o usuário leria "nada encontrado" para uma busca que encontrou.
+  useEffect(() => {
+    setPage(1);
+  }, [selectedCategories, debouncedTitle, month, sort, pageSize]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    listPurchases({ categories: selectedCategories, title: debouncedTitle, month })
+    listPurchases({
+      categories: selectedCategories,
+      title: debouncedTitle,
+      month,
+      page,
+      limit: pageSize,
+      sort: sort.key,
+      order: sort.direction,
+    })
       .then((data) => {
         if (cancelled) return;
-        setPurchases(data.purchases ?? []);
-        setSummary({ total: data.total, sum: data.sum, average: data.average });
+        setResult({
+          purchases: data.purchases ?? [],
+          total: data.total,
+          sum: data.sum,
+          average: data.average,
+          pageCount: data.pageCount,
+          byMonth: data.byMonth ?? [],
+          byCategory: data.byCategory ?? [],
+        });
       })
       .catch((cause: Error) => {
         if (!cancelled) setError(cause.message);
@@ -122,30 +180,11 @@ function Home() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCategories, debouncedTitle, month, reload]);
+  }, [selectedCategories, debouncedTitle, month, page, pageSize, sort, reload]);
 
-  const pointsByMonth = useMemo(
-    () =>
-      groupByMonth(purchases).map((group) => ({
-        month: group.value,
-        total: Number(group.data.reduce((acc, p) => acc + p.amount, 0).toFixed(2)),
-        count: group.data.length,
-      })),
-    [purchases],
-  );
-
-  const categoryBreakdown = useMemo(() => {
-    const total = purchases.reduce((acc, purchase) => acc + purchase.amount, 0);
-    return groupByCategory(purchases).map((group) => {
-      const totalCategory = group.data.reduce((acc, purchase) => acc + purchase.amount, 0);
-      return {
-        categoryByMonth: group.value,
-        totalCategory,
-        frequency: group.data.length,
-        percentage: total > 0 ? (totalCategory * 100) / total : 0,
-      };
-    });
-  }, [purchases]);
+  // A API devolve só os meses com gasto — preencher os buracos é desenho, não
+  // agregação, e por isso continua aqui.
+  const pointsByMonth = useMemo(() => fillMonthGaps(result.byMonth), [result.byMonth]);
 
   // Cada painel some quando vira trivial: filtrando uma fatura só, o gráfico por
   // mês teria uma barra; filtrando uma categoria só, a composição teria 100% dela.
@@ -209,19 +248,19 @@ function Home() {
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <StatCard
           label="Total gasto"
-          value={currency(summary.sum)}
+          value={currency(result.sum)}
           Icon={CoinsIcon}
           loading={loading}
         />
         <StatCard
           label="Lançamentos"
-          value={summary.total.toLocaleString('pt-BR')}
+          value={result.total.toLocaleString("pt-BR")}
           Icon={ReceiptTextIcon}
           loading={loading}
         />
         <StatCard
           label="Ticket médio"
-          value={currency(summary.average)}
+          value={currency(result.average)}
           Icon={CalculatorIcon}
           loading={loading}
         />
@@ -232,7 +271,7 @@ function Home() {
        * disputar a largura com ela. A tabela é o assunto desta tela — os painéis
        * dão a forma do conjunto filtrado, e a tabela mostra o detalhe.
        */}
-      {!loading && purchases.length > 0 && hasPanels && (
+      {!loading && result.total > 0 && hasPanels && (
         <div
           className={cn(
             'mb-4 grid gap-4',
@@ -259,13 +298,13 @@ function Home() {
               <CardHeader className="pb-3">
                 <CardTitle>Onde o dinheiro foi</CardTitle>
                 <CardDescription>
-                  {categoryBreakdown.length > TOP_CATEGORIES
-                    ? `As ${TOP_CATEGORIES} maiores de ${categoryBreakdown.length} categorias`
+                  {result.byCategory.length > TOP_CATEGORIES
+                    ? `As ${TOP_CATEGORIES} maiores de ${result.byCategory.length} categorias`
                     : 'Por categoria, da maior para a menor'}
                 </CardDescription>
               </CardHeader>
               <div className="px-4 pb-4 sm:px-5 sm:pb-5">
-                <CategoryBreakdown categories={categoryBreakdown} limit={TOP_CATEGORIES} />
+                <CategoryBreakdown categories={result.byCategory} limit={TOP_CATEGORIES} />
               </div>
             </Card>
           )}
@@ -273,10 +312,18 @@ function Home() {
       )}
 
       <PurchasesTable
-        purchases={purchases}
+        purchases={result.purchases}
         loading={loading}
         categories={known}
         onReclassify={reclassify}
+        sort={sort}
+        onSortChange={setSort}
+        page={page}
+        pageCount={result.pageCount}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        total={result.total}
       />
     </>
   );

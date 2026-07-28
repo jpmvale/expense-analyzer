@@ -4,16 +4,24 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Purchase, PurchaseDocument } from '../schemas/purchase.schema';
 import { Subscription, SubscriptionDocument } from '../schemas/subscription.schema';
-import { Bill, buildBills, round } from './bill-aggregation';
+import { Bill, buildBills } from './bill-aggregation';
 import { ListPurchasesQueryDto } from './dto/list-purchases-query.dto';
 import { NameSubscriptionDto } from './dto/subscription.dto';
 import { buildPurchaseFilter } from './purchase-filter';
+import {
+  buildPaging,
+  buildSortSpec,
+  buildSummaryPipeline,
+  toSummary,
+  type FacetShape,
+} from './purchase-query';
 import { buildRecurringCharges, RecurringCharge } from './recurring';
 import { buildUncategorizedTitles, UncategorizedTitle } from './uncategorized';
 
 export type { Bill, CategoryBreakdown } from './bill-aggregation';
 export type { PricePlateau, RecurringCharge } from './recurring';
 export type { UncategorizedTitle } from './uncategorized';
+export type { CategorySlice, MonthPoint, SortableField, SortOrder } from './purchase-query';
 
 /**
  * A assinatura como a tela recebe: a detecção mais o apelido do usuário.
@@ -32,24 +40,66 @@ export class PurchaseService {
     private readonly subscriptionModel: Model<SubscriptionDocument>,
   ) {}
 
+  /**
+   * Uma página de compras, mais os agregados do filtro inteiro.
+   *
+   * A divisão é a coisa toda: `purchases` é a página, e `total`, `sum`,
+   * `average`, `byMonth` e `byCategory` descrevem **todas** as linhas que o
+   * filtro alcança. Antes a API mandava tudo e o cliente somava, ordenava e
+   * fatiava; isso funcionava porque nada ficava de fora. Ao paginar, somar no
+   * cliente passaria a descrever cinquenta linhas e chamar isso de "onde o
+   * dinheiro foi" — errado, e sem nenhum sintoma visível.
+   *
+   * As duas consultas vão em paralelo porque não dependem uma da outra: a página
+   * é um `find` com `skip`/`limit`, e os agregados são um `$facet` que varre o
+   * filtro uma vez só para as três contas.
+   */
   async listPurchases(filter: ListPurchasesQueryDto) {
-    const purchases = await this.purchaseModel
-      .find(buildPurchaseFilter(filter))
-      .sort('date')
-      .exec();
-    const sum = purchases.reduce((acc, purchase) => acc + purchase.amount, 0);
-    const total = purchases.length;
+    const query = buildPurchaseFilter(filter);
+    const { page, limit, skip } = buildPaging(filter.page, filter.limit);
+
+    const [purchases, facet] = await Promise.all([
+      this.purchaseModel
+        .find(query)
+        .sort(buildSortSpec(filter.sort, filter.order))
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.purchaseModel.aggregate<FacetShape>(buildSummaryPipeline(query)).exec(),
+    ]);
+
+    const summary = toSummary(facet[0]);
 
     return {
       purchases,
-      total,
-      sum: round(sum),
-      average: total > 0 ? round(sum / total) : 0,
+      ...summary,
+      page,
+      limit,
+      pageCount: Math.max(1, Math.ceil(summary.total / limit)),
     };
   }
 
+  /**
+   * As faturas, agregadas mês a mês.
+   *
+   * Puxa a coleção inteira porque a agregação precisa dela: o dia em que o ciclo
+   * fecha é inferido da distância entre a compra e a fatura em que ela caiu, e
+   * isso só se vê olhando todas as compras. Os pagamentos entram junto — eles não
+   * são gasto, mas são o `valuePaid` de cada mês.
+   *
+   * A projeção é o que impede isso de custar caro: `buildBills` lê quatro campos,
+   * e sem dizê-lo o driver traz também `title`, `sourceCategory`, `_id` e `__v`.
+   * Sobre 58 mil documentos a diferença medida foi de 123 ms para 79 ms; sobre a
+   * base de referência não se sente, mas é o mesmo cuidado que `/purchase/recurring`
+   * e `/purchase/uncategorized` já tomavam.
+   */
   async listBills(): Promise<Bill[]> {
-    const purchases = await this.purchaseModel.find().sort('date').exec();
+    const purchases = await this.purchaseModel
+      .find()
+      .select('amount category referenceMonth date')
+      .sort('date')
+      .exec();
+
     return buildBills(purchases);
   }
 

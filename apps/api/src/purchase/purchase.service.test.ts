@@ -112,12 +112,206 @@ describe('PurchaseService', () => {
     });
 
     it('devolve zeros, e não NaN, quando nada casa', async () => {
-      assert.deepEqual(await service.listPurchases({ title: 'não existe' }), {
-        purchases: [],
-        total: 0,
-        sum: 0,
-        average: 0,
-      });
+      const vazio = await service.listPurchases({ title: 'não existe' });
+
+      assert.deepEqual(vazio.purchases, []);
+      assert.equal(vazio.total, 0);
+      assert.equal(vazio.sum, 0);
+      assert.equal(vazio.average, 0);
+      assert.deepEqual(vazio.byMonth, []);
+      assert.deepEqual(vazio.byCategory, []);
+    });
+  });
+
+  /*
+   * A divisão que a paginação no servidor introduz: `purchases` é a página, e
+   * todo o resto descreve o filtro inteiro. Confundir os dois é um erro sem
+   * sintoma — a tela mostraria a soma de cinquenta linhas chamando-a de total.
+   */
+  describe('paginação', () => {
+    beforeEach(async () => {
+      await db.purchases.create(
+        Array.from({ length: 120 }, (_, i) =>
+          purchase(`Compra ${String(i).padStart(3, '0')}`, 'compras', {
+            amount: 10,
+            date: new Date(Date.UTC(2026, 0, 1 + (i % 28))),
+          }),
+        ),
+      );
+    });
+
+    it('devolve só a página pedida', async () => {
+      const primeira = await service.listPurchases({ page: 1, limit: 50 });
+
+      assert.equal(primeira.purchases.length, 50);
+      assert.equal(primeira.page, 1);
+      assert.equal(primeira.pageCount, 3);
+    });
+
+    it('mantém os agregados sobre o filtro inteiro, não sobre a página', async () => {
+      const pagina = await service.listPurchases({ page: 2, limit: 10 });
+
+      assert.equal(pagina.purchases.length, 10);
+      // 120 compras de R$ 10 — os números não são os da página.
+      assert.equal(pagina.total, 120);
+      assert.equal(pagina.sum, 1200);
+      assert.equal(pagina.average, 10);
+    });
+
+    it('a última página traz o resto', async () => {
+      const ultima = await service.listPurchases({ page: 3, limit: 50 });
+      assert.equal(ultima.purchases.length, 20);
+    });
+
+    it('página além do fim vem vazia, sem quebrar', async () => {
+      const alem = await service.listPurchases({ page: 99, limit: 50 });
+
+      assert.deepEqual(alem.purchases, []);
+      assert.equal(alem.total, 120);
+    });
+
+    /*
+     * O teste que justifica o desempate por `_id`. Todas as 120 compras têm o
+     * mesmo valor, então ordenar por `amount` empata tudo. Sem critério estável,
+     * o Mongo pode devolver a mesma compra em duas páginas e nenhuma vez outra.
+     */
+    it('não repete nem perde linha entre páginas, mesmo com tudo empatado', async () => {
+      const vistos: string[] = [];
+      for (let page = 1; page <= 3; page++) {
+        const { purchases } = await service.listPurchases({
+          page,
+          limit: 50,
+          sort: 'amount',
+          order: 'desc',
+        });
+        vistos.push(...purchases.map((p) => String(p._id)));
+      }
+
+      assert.equal(vistos.length, 120);
+      assert.equal(new Set(vistos).size, 120, 'houve id repetido entre páginas');
+    });
+
+    it('prende o limite ao teto', async () => {
+      const { limit } = await service.listPurchases({ limit: 999_999 });
+      assert.equal(limit, 250);
+    });
+  });
+
+  describe('ordenação no servidor', () => {
+    beforeEach(async () => {
+      await db.purchases.create([
+        purchase('Cachorro', 'pet', { amount: 30, date: new Date('2026-03-01T00:00:00.000Z') }),
+        purchase('Abacaxi', 'feira', { amount: 10, date: new Date('2026-01-01T00:00:00.000Z') }),
+        purchase('Bicicleta', 'lazer', { amount: 20, date: new Date('2026-02-01T00:00:00.000Z') }),
+      ]);
+    });
+
+    const titulos = (r: { purchases: Array<{ title: string }> }) => r.purchases.map((p) => p.title);
+
+    it('ordena por título nos dois sentidos', async () => {
+      assert.deepEqual(titulos(await service.listPurchases({ sort: 'title', order: 'asc' })), [
+        'Abacaxi',
+        'Bicicleta',
+        'Cachorro',
+      ]);
+      assert.deepEqual(titulos(await service.listPurchases({ sort: 'title', order: 'desc' })), [
+        'Cachorro',
+        'Bicicleta',
+        'Abacaxi',
+      ]);
+    });
+
+    it('ordena por valor', async () => {
+      assert.deepEqual(titulos(await service.listPurchases({ sort: 'amount', order: 'desc' })), [
+        'Cachorro',
+        'Bicicleta',
+        'Abacaxi',
+      ]);
+    });
+
+    // A tela abre em "o que aconteceu agora", não em 2018.
+    it('abre pelo mais recente quando ninguém pede ordem', async () => {
+      assert.deepEqual(titulos(await service.listPurchases({})), [
+        'Cachorro',
+        'Bicicleta',
+        'Abacaxi',
+      ]);
+    });
+  });
+
+  /*
+   * Os painéis da tela de Compras liam isto do conjunto inteiro enquanto a API
+   * mandava tudo. Com paginação eles precisam vir do servidor, senão passariam a
+   * descrever a página aberta.
+   */
+  describe('agregados dos painéis', () => {
+    beforeEach(async () => {
+      await db.purchases.create([
+        purchase('Uber', 'transporte', { amount: 30, date: new Date('2026-01-10T00:00:00.000Z') }),
+        purchase('99app', 'transporte', { amount: 20, date: new Date('2026-02-10T00:00:00.000Z') }),
+        purchase('Padaria', 'restaurante', {
+          amount: 50,
+          date: new Date('2026-02-20T00:00:00.000Z'),
+        }),
+      ]);
+    });
+
+    it('agrupa por mês da compra, com uma página de uma linha só', async () => {
+      const { byMonth, purchases } = await service.listPurchases({ page: 1, limit: 1 });
+
+      assert.equal(purchases.length, 1);
+      assert.deepEqual(byMonth, [
+        { month: '2026-01', total: 30, count: 1 },
+        { month: '2026-02', total: 70, count: 2 },
+      ]);
+    });
+
+    // As duas categorias somam exatamente R$ 50 — o empate é de propósito, e
+    // prende o desempate por nome. Sem ele o painel troca a ordem sozinho entre
+    // uma requisição e outra, o que ninguém reporta como bug mas incomoda.
+    it('agrupa por categoria, da maior para a menor, desempatando pelo nome', async () => {
+      const { byCategory } = await service.listPurchases({ page: 1, limit: 1 });
+
+      assert.deepEqual(
+        byCategory.map((c) => [c.categoryByMonth, c.totalCategory, c.frequency]),
+        [
+          ['restaurante', 50, 1],
+          ['transporte', 50, 2],
+        ],
+      );
+      assert.equal(byCategory[0].percentage, 50);
+    });
+
+    /*
+     * Regressão que veio do cliente junto com a agregação. A chave do mês era
+     * montada em horário local sobre datas em UTC: em UTC-3, toda compra do dia
+     * 1º caía no mês anterior e o gráfico abria com uma barra fantasma. Agora
+     * quem monta a chave é o `$dateToString`, e o `timezone: 'UTC'` é o que
+     * impede o mesmo erro do lado do servidor — os testes rodam em
+     * America/Sao_Paulo justamente para que isso apareça.
+     */
+    it('mantém a compra do dia 1º no próprio mês, não no anterior', async () => {
+      await db.purchases.deleteMany({});
+      await db.purchases.create([
+        purchase('Virada', 'compras', { date: new Date('2026-02-01T00:00:00.000Z') }),
+      ]);
+
+      const { byMonth } = await service.listPurchases({});
+
+      assert.deepEqual(
+        byMonth.map((p) => p.month),
+        ['2026-02'],
+      );
+    });
+
+    it('respeita o filtro nos agregados', async () => {
+      const { byCategory, total } = await service.listPurchases({ category: 'transporte' });
+
+      assert.equal(total, 2);
+      assert.deepEqual(
+        byCategory.map((c) => c.categoryByMonth),
+        ['transporte'],
+      );
     });
   });
 

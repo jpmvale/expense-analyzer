@@ -25,7 +25,7 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | **Ingestão** | Lê as faturas em CSV do **Google Drive** ou de uma **pasta local**, categoriza as compras e grava no MongoDB. Regravar uma fatura sobrescreve o mês inteiro — rodar de novo é idempotente. |
 | **Categorização** | Uma escada de precedência (detalhada [abaixo](#como-uma-compra-ganha-categoria)) que termina em `outros`. No topo dela ficam as **suas regras**; embaixo, a categoria do CSV, a herança por título e as palavras-chave. Códigos internos do emissor viram rótulos do domínio: `reversal_*` → `estorno`, `tax_*` → `impostos`, `bnpl_*` → `parcelado`. |
 | **Classificação** | Você cria suas categorias e diz a que categoria cada estabelecimento pertence. A regra vale para todas as compras dele, passadas e futuras, e **sobrevive ao reprocessamento**. Reclassificar acontece em dois lugares: na tela *Sem categoria*, que lista o que está em `outros` do que mais pesa para o que menos pesa, e direto na coluna Categoria da tabela de Compras. |
-| **Compras** | Lista filtrável por **categoria**, **título** (busca parcial) e **mês da fatura**, com total, quantidade e ticket médio. Tabela ordenável e paginada. |
+| **Compras** | Lista filtrável por **categoria**, **título** (busca parcial) e **mês da fatura**, com total, quantidade e ticket médio. Filtro, ordenação, paginação e os agregados dos painéis acontecem **no servidor** — os painéis descrevem o filtro inteiro, e a tabela mostra uma página dele. |
 | **Gráficos** | Gasto por mês e por categoria, em barras, acompanhando os filtros aplicados. |
 | **Visão geral** | A home: última fatura fechada com a variação contra o mês anterior, média dos doze meses anteriores, total do ano e a composição do mês. O recorte de "fechada" é o fim do ciclo de compras, não o mês do vencimento: o que ainda não fechou — o ciclo em aberto e as parcelas lançadas à frente — aparece à parte, fora dos agregados. O cartão **Fora do normal** compara cada categoria contra o próprio histórico — [como](#o-que-conta-como-fora-do-normal). |
 | **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês, com o fundo da célula proporcional ao peso. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. Meses com juros ou multa vêm marcados, e o valor aparece à parte do gasto. |
@@ -441,17 +441,35 @@ discordarem do mesmo mês. Estornos, ao contrário, entram com valor negativo e 
 | `title` | `uber` | Busca parcial, sem diferenciar maiúsculas |
 | `date` | `2024-03-15` | Mês da **data da compra**. Qualquer dia serve — o filtro cobre o mês inteiro |
 | `month` | `2024-03` | Mês da **fatura** em que a compra apareceu |
+| `page` | `2` | Página, começando em 1 |
+| `limit` | `50` | Linhas por página. Teto de 250 — sem ele, um limite alto traria a coleção inteira e desfaria a paginação |
+| `sort` | `amount` | `title`, `amount`, `category`, `referenceMonth` ou `date`. Lista fechada: o valor vira chave de ordenação do Mongo |
+| `order` | `desc` | `asc` ou `desc`. O padrão é `date` decrescente — a tela abre no que aconteceu agora |
 
 `date` e `month` filtram campos diferentes de propósito: uma compra de 28/02 costuma cair na fatura
 de março, então `date=2024-02-10` e `month=2024-02` devolvem conjuntos distintos. A tela filtra por
 `month` — o seletor se chama "Fatura".
 
+**`purchases` é uma página; todo o resto descreve o filtro inteiro.** É a distinção que sustenta a
+tela: os painéis respondem "onde o dinheiro foi neste recorte", e somá-los sobre as cinquenta linhas
+visíveis diria outra coisa sem nenhum sintoma. A ordenação sempre desempata por `_id`, senão duas
+páginas de uma coluna com empates poderiam repetir e omitir a mesma compra.
+
 ```jsonc
 {
-  "purchases": [ /* ... */ ],
-  "total": 742,
+  "purchases": [ /* a página */ ],
+  "total": 742,          // linhas que o filtro alcança
   "sum": 269470.89,
-  "average": 363.17
+  "average": 363.17,
+  "page": 1,
+  "limit": 50,
+  "pageCount": 15,
+  "byMonth": [           // agrupado pela DATA da compra, não pelo mês da fatura
+    { "month": "2024-03", "total": 4820.15, "count": 61 }
+  ],
+  "byCategory": [
+    { "categoryByMonth": "supermercado", "totalCategory": 37340.21, "frequency": 214, "percentage": 17.1 }
+  ]
 }
 ```
 
@@ -599,6 +617,40 @@ Todos rodam da raiz do repositório.
 
 Para inspecionar o banco pelo navegador: `docker compose --profile tools up -d` → http://localhost:8081.
 
+### Escala: o que foi medido
+
+Antes de mexer em qualquer coisa aqui, valia saber quando o problema chega de verdade. A base cresce
+**732 compras por ano** (média de 2019–2025). Replicando-a até 58 mil documentos — o que levaria
+cerca de **72 anos** neste ritmo — os números ficavam assim:
+
+| Operação | 5.855 docs | 58.550 docs |
+| --- | --- | --- |
+| `GET /purchase` devolvendo tudo | 52 ms · 1,1 MB | 107 ms · **11,4 MB** |
+| `GET /purchase/bill` | 41 ms | 123 ms → **79 ms** com projeção |
+| `updateMany` por `$in` de títulos (reaplicação) | 2 ms | 35 ms → **5 ms** com índice em `title` |
+| Uma página de 50 ordenada, no servidor | — | 1 ms |
+
+O **índice em `title`** serve à reaplicação, e não à busca: um `$regex` sem âncora e
+case-insensitive não usa índice nenhum e mede 13 ms com ou sem ele, enquanto `distinct` e
+`updateMany` consultam por igualdade e ficam sete vezes mais rápidos. A **projeção no `listBills`**
+existe porque a agregação lê quatro campos e sem dizê-lo o driver traz também `title`,
+`sourceCategory`, `_id` e `__v`.
+
+**Paginação, ordenação e agregação passaram para o servidor.** Sobre a base atual a resposta de
+`GET /purchase` caiu de **1,13 MB para 17,7 KB** numa página de 50, e de 52 ms para 12 ms.
+
+O detalhe que torna isso perigoso, e que decidiu o desenho: mover só a paginação teria sido um erro
+silencioso. A ordenação era do cliente, então ordenar por valor passaria a ordenar as cinquenta
+linhas visíveis — a tela mostraria "a maior compra" que é apenas a maior da página. Os dois painéis
+tinham o mesmo problema: eram somados a partir da lista recebida, e passariam a descrever a página
+chamando isso de "onde o dinheiro foi". Por isso a resposta separa as duas escalas — `purchases` é a
+página, e `total`, `sum`, `average`, `byMonth` e `byCategory` descrevem o filtro inteiro.
+
+Duas ordenações ganharam critério de desempate por causa disso. A das linhas desempata por `_id`:
+sem isso, ordenar por uma coluna com milhares de empates deixaria o Mongo livre para devolver a mesma
+compra na página 1 e de novo na 2, enquanto outra não apareceria em nenhuma. A das categorias
+desempata pelo nome, senão duas que somam o mesmo trocam de lugar entre uma requisição e outra.
+
 ### Os testes que precisam de banco
 
 A maior parte das regras mora em função pura e é testada sem banco. Mas o que dá mais medo de
@@ -670,9 +722,10 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
   mandou e a memória por título, e uma palavra-chave genérica não deve atropelar as duas.
 - **Não há tela para o reapply.** A rota existe e é idempotente, mas quem quiser usá-la precisa de um
   `curl` — na interface, a reclassificação só acontece de carona numa mudança de regra.
-- A reaplicação varre a coleção inteira a cada mudança de regra. Numa base pessoal — alguns milhares
-  de compras, algumas centenas de títulos — isso some no tempo da requisição. Numa base grande,
-  não sumiria.
+- **A reaplicação de regras varre a coleção inteira a cada mudança**, e isso é uma escolha — é o que
+  a mantém idempotente. Numa base pessoal some no tempo da requisição; veja
+  [Escala](#escala-o-que-foi-medido) para os números. `/purchase` já não faz isso: pagina, ordena e
+  agrega no servidor.
 - **A detecção de assinatura é uma tela, não um aviso.** O degrau de preço está lá, mas você precisa
   ir olhar: não há alerta quando um reajuste aparece numa fatura nova. O que ela erra de propósito
   está em [Onde a detecção falha](#onde-a-detecção-falha).

@@ -15,11 +15,20 @@ import type { RecurringCharge } from '../interface/recurring';
  */
 const BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000').replace(/\/$/, '');
 
+/** As colunas por que a API deixa ordenar. Espelha `SORTABLE_FIELDS` no back. */
+export type SortableField = 'title' | 'amount' | 'category' | 'referenceMonth' | 'date';
+export type SortOrder = 'asc' | 'desc';
+
 export interface PurchaseFilters {
   categories?: string[];
   title?: string;
   /** Mês da fatura em `YYYY-MM` — o mesmo formato que a API recebe. */
   month?: string | null;
+  /** Página, começando em 1. */
+  page?: number;
+  limit?: number;
+  sort?: SortableField;
+  order?: SortOrder;
 }
 
 /**
@@ -58,10 +67,25 @@ function sendJson<T>(method: 'POST' | 'PATCH', path: string, body: unknown): Pro
   });
 }
 
-export function buildPurchasesQuery({ categories, title, month }: PurchaseFilters): string {
+export function buildPurchasesQuery({
+  categories,
+  title,
+  month,
+  page,
+  limit,
+  sort,
+  order,
+}: PurchaseFilters): string {
   const params = new URLSearchParams();
   if (categories && categories.length > 0) params.set('category', categories.join(','));
   if (title) params.set('title', title);
+  // Paginação e ordenação são do servidor: a tabela mostra o que vem, sem
+  // reordenar nem fatiar. Ordenar só a página aberta ordenaria cinquenta linhas
+  // e chamaria isso de ordem — o erro que a migração existe para evitar.
+  if (page && page > 1) params.set('page', String(page));
+  if (limit) params.set('limit', String(limit));
+  if (sort) params.set('sort', sort);
+  if (order) params.set('order', order);
   if (month) {
     // O seletor da tela se chama "Fatura", então filtra pelo mês da fatura
     // (`month`) e não pela data da compra (`date`) — os dois campos existem na

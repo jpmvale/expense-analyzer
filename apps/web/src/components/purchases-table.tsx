@@ -1,5 +1,6 @@
 import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import type { SortableField } from '@/api/client';
+import { nextSort, PAGE_SIZES, type Sort } from '@/lib/purchaseSort';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -25,8 +26,7 @@ import type { Category } from '@/interface/category';
 import type Purchase from '@/interface/purchase';
 import { capitalize, cn, currency, formatDate, formatMonth } from '@/lib/utils';
 
-type SortKey = 'title' | 'amount' | 'category' | 'referenceMonth' | 'date';
-type Direction = 'asc' | 'desc';
+type SortKey = SortableField;
 
 const COLUMNS: Array<{ key: SortKey; label: string; className?: string }> = [
   { key: 'title', label: 'Título' },
@@ -36,35 +36,6 @@ const COLUMNS: Array<{ key: SortKey; label: string; className?: string }> = [
   { key: 'date', label: 'Data' },
 ];
 
-const PAGE_SIZES = [25, 50, 100, 250];
-
-/**
- * A API devolve as compras em ordem cronológica, o que fazia a tela abrir em
- * 2018. Numa tela de explorar gastos, o que interessa é o que aconteceu agora.
- */
-const DEFAULT_SORT: Sort = { key: 'date', direction: 'desc' };
-
-/**
- * Colunas em que o primeiro clique já ordena do maior para o menor: em valor e
- * data, "maior primeiro" é a pergunta que se faz — quais foram as maiores compras,
- * quais foram as mais recentes. Em texto, a ordem alfabética é a natural.
- */
-const DESC_FIRST: SortKey[] = ['amount', 'date', 'referenceMonth'];
-
-interface Sort {
-  key: SortKey;
-  direction: Direction;
-}
-
-function compare(a: Purchase, b: Purchase, key: SortKey, direction: Direction): number {
-  const left = a[key];
-  const right = b[key];
-  const result =
-    typeof left === 'number' && typeof right === 'number'
-      ? left - right
-      : String(left).localeCompare(String(right), 'pt-BR');
-  return direction === 'asc' ? result : -result;
-}
 
 /** Estorno é negativo e merece leitura própria — não é um gasto a menos escondido. */
 function Amount({ value }: { value: number }) {
@@ -115,39 +86,48 @@ function CategoryCell({
   );
 }
 
+export interface PurchasesTableProps extends ReclassifyProps {
+  /** A página que o servidor devolveu. A tabela não reordena nem fatia. */
+  purchases: Purchase[];
+  loading?: boolean;
+  sort: Sort;
+  onSortChange: (sort: Sort) => void;
+  /** Página atual, 1-based, como na URL e na API. */
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+  /** Linhas que o filtro alcança — não as desta página. */
+  total: number;
+}
+
+/**
+ * A tabela de compras, controlada de fora.
+ *
+ * Ordenar e paginar são do servidor, e o componente ficou sem `useMemo` e sem
+ * `slice` por isso. A alternativa — manter a ordenação aqui — ordenaria apenas
+ * as linhas da página aberta e chamaria o resultado de "ordenado por valor",
+ * que é falso e não dá nenhum sintoma: a tela parece funcionar.
+ */
 export function PurchasesTable({
   purchases,
   loading,
   categories,
   onReclassify,
-}: {
-  purchases: Purchase[];
-  loading?: boolean;
-} & ReclassifyProps) {
-  const [sort, setSort] = useState<Sort>(DEFAULT_SORT);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(PAGE_SIZES[1]);
+  sort,
+  onSortChange,
+  page,
+  pageCount,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  total,
+}: PurchasesTableProps) {
+  const rows = purchases;
+  const start = (page - 1) * pageSize;
 
-  const sorted = useMemo(
-    () => [...purchases].sort((a, b) => compare(a, b, sort.key, sort.direction)),
-    [purchases, sort],
-  );
-
-  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
-  const current = Math.min(page, pageCount - 1);
-  const start = current * pageSize;
-  const rows = sorted.slice(start, start + pageSize);
-
-  // Sempre há uma ordenação. Antes o terceiro clique voltava à ordem da API, um
-  // estado sem nome na tela que agora seria só "de 2018 para cá" — confuso.
-  const toggleSort = (key: SortKey) => {
-    setPage(0);
-    setSort((prev) =>
-      prev.key === key
-        ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
-        : { key, direction: DESC_FIRST.includes(key) ? 'desc' : 'asc' },
-    );
-  };
+  const toggleSort = (key: SortKey) => onSortChange(nextSort(sort, key));
 
   if (loading) {
     return (
@@ -161,7 +141,9 @@ export function PurchasesTable({
     );
   }
 
-  if (purchases.length === 0) {
+  // `total`, e não o tamanho da página: uma página vazia com resultados atrás
+  // dela é outra situação, e dizer "nenhuma compra encontrada" ali seria mentira.
+  if (total === 0) {
     return (
       <Card className="p-10 text-center">
         <p className="text-sm text-muted-foreground">
@@ -256,16 +238,10 @@ export function PurchasesTable({
 
       <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="tabular text-xs text-muted-foreground">
-          {start + 1}–{Math.min(start + pageSize, sorted.length)} de {sorted.length}
+          {start + 1}–{start + rows.length} de {total.toLocaleString('pt-BR')}
         </p>
         <div className="flex items-center gap-2">
-          <Select
-            value={String(pageSize)}
-            onValueChange={(next) => {
-              setPageSize(Number(next));
-              setPage(0);
-            }}
-          >
+          <Select value={String(pageSize)} onValueChange={(next) => onPageSizeChange(Number(next))}>
             <SelectTrigger className="h-8 w-24" aria-label="Linhas por página">
               <SelectValue />
             </SelectTrigger>
@@ -280,19 +256,19 @@ export function PurchasesTable({
           <Button
             variant="outline"
             size="sm"
-            disabled={current === 0}
-            onClick={() => setPage(current - 1)}
+            disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)}
           >
             Anterior
           </Button>
           <span className="tabular text-xs text-muted-foreground">
-            {current + 1}/{pageCount}
+            {page}/{pageCount}
           </span>
           <Button
             variant="outline"
             size="sm"
-            disabled={current >= pageCount - 1}
-            onClick={() => setPage(current + 1)}
+            disabled={page >= pageCount}
+            onClick={() => onPageChange(page + 1)}
           >
             Próxima
           </Button>

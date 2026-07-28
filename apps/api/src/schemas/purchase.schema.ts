@@ -3,13 +3,23 @@ import { HydratedDocument } from 'mongoose';
 
 export type PurchaseDocument = HydratedDocument<Purchase>;
 
+// `type` explícito em vez de inferido, em todos os campos: o
+// `emitDecoratorMetadata` só existe sob o compilador do TypeScript, e os testes
+// rodam sob esbuild, que não o emite. Dizer o tipo produz o mesmo schema e o
+// torna independente do flag.
 @Schema({ collection: 'purchases' })
 export class Purchase {
-  // `type` explícito em vez de inferido, em todos os campos: o
-  // `emitDecoratorMetadata` só existe sob o compilador do TypeScript, e os testes
-  // rodam sob esbuild, que não o emite. Dizer o tipo produz o mesmo schema e o
-  // torna independente do flag.
-  @Prop({ type: String, required: true })
+  /**
+   * Indexado por causa da reaplicação de regras, e não da busca da tela.
+   *
+   * A distinção importa: a busca por título é `$regex` sem âncora e
+   * case-insensitive, e nenhum índice comum a atende — o Mongo varre a coleção
+   * com ou sem ele (medido: 13 ms nos dois casos sobre 58 mil documentos). Já a
+   * reaplicação consulta por igualdade — `distinct('title')` e
+   * `updateMany({ title: { $in: [...] } })` —, e aí o índice vale: o mesmo
+   * `updateMany` caiu de 35 ms para 5 ms.
+   */
+  @Prop({ type: String, required: true, index: true })
   title: string;
 
   @Prop({ type: Number, required: true })
