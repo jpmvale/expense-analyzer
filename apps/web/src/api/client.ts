@@ -50,8 +50,13 @@ async function readError(response: Response, path: string): Promise<Error> {
   return new Error(`A API respondeu ${response.status} em ${path}`);
 }
 
+/**
+ * `credentials: 'include'` em toda chamada: a API e o front vivem em portas
+ * diferentes (3000 e 5173), e sem isso o cookie de sessão nunca sai do
+ * navegador — a chamada chegaria sempre como anônima, mesmo logado.
+ */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${BASE_URL}${path}`, init);
+  const response = await fetch(`${BASE_URL}${path}`, { credentials: 'include', ...init });
   if (!response.ok) throw await readError(response, path);
   return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>);
 }
@@ -197,4 +202,16 @@ export function deleteRule(id: string): Promise<ReapplyResult> {
  */
 export function reapplyRules(): Promise<ReapplyResult> {
   return request<ReapplyResult>('/category-rule/reapply', { method: 'POST' });
+}
+
+export function login(username: string, password: string): Promise<{ username: string }> {
+  return sendJson('POST', '/auth/login', { username, password });
+}
+
+export function logout(): Promise<void> {
+  return request<void>('/auth/logout', { method: 'POST' });
+}
+
+export function getSession(): Promise<{ authenticated: boolean }> {
+  return getJson<{ authenticated: boolean }>('/auth/session');
 }

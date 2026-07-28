@@ -2,6 +2,7 @@ import {
   FileTextIcon,
   LayoutDashboardIcon,
   ListChecksIcon,
+  LogOutIcon,
   MenuIcon,
   ReceiptTextIcon,
   RepeatIcon,
@@ -9,10 +10,11 @@ import {
   WalletIcon,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 
 const NAV = [
@@ -37,6 +39,13 @@ function Wordmark() {
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className="min-h-dvh bg-background">
@@ -99,8 +108,11 @@ export function AppShell() {
             ))}
           </nav>
 
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
             <ThemeToggle />
+            <Button variant="ghost" size="icon" aria-label="Sair" title="Sair" onClick={handleSignOut}>
+              <LogOutIcon />
+            </Button>
           </div>
         </div>
       </header>

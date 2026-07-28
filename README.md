@@ -94,6 +94,9 @@ explícito, o front pelo `envDir` do Vite). Copie de [`.env.example`](.env.examp
 | `MONGO_URI` | api, extractor | `mongodb://localhost:27017/credit-card` | Conexão com o Mongo. **O nome do banco vai na URI** — é dele que os dois apps leem. Troque por uma connection string do Atlas se preferir a nuvem. |
 | `PORT` | api | `3000` | Porta HTTP da API. |
 | `CORS_ORIGIN` | api | `http://localhost:5173` | Origens liberadas no CORS, separadas por vírgula. **Vazio libera todas** (só em dev). |
+| `AUTH_USERNAME` | api | — | Usuário único do login. Veja [Autenticação](#autenticação). |
+| `AUTH_PASSWORD_HASH` | api | — | Hash bcrypt da senha — nunca a senha em texto puro. Gerado por `pnpm --filter @expense/api hash-password`. **Segredo.** |
+| `SESSION_SECRET` | api | — | Assina o cookie de sessão. String aleatória longa; trocar derruba toda sessão aberta. **Segredo.** |
 | `VITE_API_URL` | web | `http://localhost:3000` | Base da API usada pelo front. Precisa do prefixo `VITE_` pra chegar no bundle. |
 | `EXTRACTOR_SOURCE` | extractor | `drive` | De onde vêm as faturas: `drive` (Google Drive) ou `local` (pasta). |
 | `BILLS_DIR` | extractor | `./bills` | Fonte `local`: diretório com os CSVs. |
@@ -103,6 +106,27 @@ explícito, o front pelo `envDir` do Vite). Copie de [`.env.example`](.env.examp
 
 `.env`, `drive-credentials.json` e `token.json` estão no `.gitignore` — nenhum deles vai pro
 repositório.
+
+---
+
+## Autenticação
+
+Um usuário só, sem tela de cadastro — é um app pessoal. Toda rota escreve ou lê dados de verdade,
+então tudo exige sessão, exceto `/auth/login`, `/auth/session` e `/health`.
+
+```bash
+# Gera o hash — a senha em texto puro nunca é gravada em lugar nenhum, nem no .env
+pnpm --filter @expense/api hash-password -- <sua senha>
+```
+
+Cole o resultado em `AUTH_PASSWORD_HASH` no `.env`, escolha `AUTH_USERNAME` e gere um
+`SESSION_SECRET` (`openssl rand -hex 32` serve). A sessão é um cookie `httpOnly`, guardado no
+próprio Mongo (`connect-mongo`, coleção `sessions`) — e não em memória, porque a API sobe com `nest
+start --watch`: cada salvamento reiniciaria o processo, e uma sessão em memória cairia junto.
+
+Login e logout ficam em `POST /auth/login` e `POST /auth/logout`; `GET /auth/session` diz se a
+sessão atual está autenticada, e é o que o front pergunta ao abrir. Trocar `SESSION_SECRET` ou
+`AUTH_PASSWORD_HASH` invalida qualquer sessão aberta — força login de novo, em qualquer aba.
 
 ---
 
@@ -783,9 +807,6 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
 
 ## Estado atual
 
-- **Não há autenticação, e a API agora escreve.** Até então ela era só leitura; as rotas de
-  categoria e de regra mudam o banco sem pedir nada a ninguém. Suba num ambiente confiável, não na
-  internet pública.
 - **Só o destino de uma regra é editável — trecho e tipo, não.** Mudar a categoria acontece direto na
   lista, e criar do zero digitando o trecho também é possível agora; as duas ações mandam o mesmo
   `POST /category-rule` de sempre, que já fazia upsert por `(kind, value)` — não precisou de rota
