@@ -57,6 +57,14 @@ export class CategoryRuleController {
     return this.categoryService.upsertRule(dto);
   }
 
+  @Post('reapply')
+  @ApiOperation({
+    summary: 'Reclassifica a base com as regras e a lista de encargos de agora, sem reextrair',
+  })
+  reapply() {
+    return this.categoryService.reapply();
+  }
+
   @Delete(':id')
   @ApiOperation({
     summary: 'Apaga a regra e devolve as compras dela à categoria que veio da fatura',

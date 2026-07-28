@@ -7,7 +7,7 @@ export {
   isReservedCategory,
   isSpendingCategory,
 } from './categories';
-export { categoryFromKeywords, normalize } from './keywords';
+export { categoryFromKeywords, isFinancingTitle, normalize } from './keywords';
 export {
   reapplyRules,
   type PurchaseStore,

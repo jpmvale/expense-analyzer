@@ -1,3 +1,5 @@
+import { FINANCING_CATEGORY } from './categories';
+
 /** Caixa baixa e sem acento — a forma em que títulos e regras se comparam. */
 export function normalize(value: string): string {
   return value
@@ -24,7 +26,7 @@ const KEYWORD_CATEGORIES: Record<string, string[]> = {
   // Encargos vem primeiro: são os títulos que o próprio emissor gera, e nenhum
   // estabelecimento se chama assim. `iof de atraso` é encargo; o IOF de uma
   // compra internacional é imposto sobre um gasto real e não entra aqui.
-  encargos: [
+  [FINANCING_CATEGORY]: [
     'saldo em atraso',
     'credito de atraso',
     'multa de atraso',
@@ -70,4 +72,20 @@ export function categoryFromKeywords(title: string): string | null {
     if (keywords.some((keyword) => normalized.includes(keyword))) return category;
   }
   return null;
+}
+
+/**
+ * Se o título é um encargo: juros, multa, saldo rolado, IOF de atraso, anuidade.
+ *
+ * Existe separado de `categoryFromKeywords` porque é a única inferência por
+ * título que a reaplicação **redecide**, em vez de herdar da ingestão. As outras
+ * repartem o gasto; esta decide se houve gasto — `encargos` fica fora do total —,
+ * e uma lista de palavras-chave desatualizada no banco significa um total errado
+ * que só um `pnpm extract` consertaria.
+ *
+ * Encargo é o primeiro grupo da tabela, então ele ganha de qualquer outra
+ * palavra-chave que também casasse com o mesmo título.
+ */
+export function isFinancingTitle(title: string): boolean {
+  return categoryFromKeywords(title) === FINANCING_CATEGORY;
 }

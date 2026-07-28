@@ -197,6 +197,21 @@ que é gasto de verdade. Por isso `encargos` é categoria comum, e uma regra sua
 O outro lado dessa moeda: uma regra larga demais pode arrastar encargos de volta para o total sem
 querer — `contains "IOF de"` pega também o "IOF de atraso".
 
+**A lista de palavras-chave de encargo é a única que a reaplicação redecide**, em vez de herdar da
+ingestão. É a única inferência por título que muda *quanto* se gastou, e não só como o gasto se
+reparte — mantê-la congelada significava que corrigir a lista só valia a partir do próximo
+`pnpm extract`, inalcançável para quem não tem mais os CSVs. Agora `POST /category-rule/reapply`
+aplica a lista de agora ao que já está no banco, nos dois sentidos: o título que a lista passou a
+reconhecer entra em `encargos`, e o que ela deixou de reconhecer sai de lá e volta para a inferência
+normal. A resposta traz `financing` com quantas compras mudaram por esse caminho, separado de
+`classified`, justamente porque o total do mês muda.
+
+Isso funciona porque nada além da palavra-chave produz `encargos`: o emissor não emite essa
+categoria e nenhum alias aponta para ela. Então, para um lançamento que a ingestão pôs ali, refazer a
+inferência pelo título é exatamente o que a ingestão faria hoje. As outras palavras-chave continuam
+congeladas em `sourceCategory` de propósito — lá também moram a categoria que o emissor mandou e a
+memória por título, que uma palavra-chave genérica não deve atropelar.
+
 ### As suas regras
 
 Uma regra é um par (como casar, para qual categoria):
@@ -521,12 +536,19 @@ requisição e devolve quantas compras mudaram.
 | `GET /category-rule` | As suas regras |
 | `POST /category-rule` | Cria ou atualiza a regra. Reclassificar o mesmo título edita a que já existe, nunca empilha uma segunda |
 | `DELETE /category-rule/:id` | Apaga a regra e devolve as compras dela à `sourceCategory` |
+| `POST /category-rule/reapply` | Reclassifica a base com as regras e a lista de encargos de agora, sem reextrair. É o gatilho para uma mudança na lista de palavras-chave de encargo valer no que já está no banco |
 
 ```jsonc
 // POST /category-rule
 { "kind": "contains", "value": "mercadolivre", "category": "mercado livre" }
-// → { "rule": { ... }, "classified": 92, "restored": 0 }
+// → { "rule": { ... }, "classified": 92, "restored": 0, "financing": 0 }
 ```
+
+`classified` são as compras que uma regra moveu; `restored`, as que voltaram à `sourceCategory` por
+não haver mais regra; `financing`, as que a camada de encargo reescreveu — para dentro ou para fora
+de `encargos`. Esta última vem separada porque muda o total gasto do mês, e não só como ele se
+reparte. Os três contam **compras**, não títulos, e a operação é idempotente: chamar duas vezes
+seguidas devolve zeros na segunda.
 
 ### `GET /health`
 
@@ -563,8 +585,15 @@ Para inspecionar o banco pelo navegador: `docker compose --profile tools up -d` 
 - **Regras se editam criando por cima, ou apagando.** Não há tela para listar e revisar o que já
   foi criado — `GET /category-rule` mostra, mas a interface ainda não. Também não dá para ajustar o
   trecho de uma regra `contains` na tela: ela sai do agrupamento da API ou do título clicado.
-- **Encargo é detectado por título, e só na ingestão.** Mudar a lista de palavras-chave não
-  reclassifica o que já está no banco: só vale a partir do próximo `pnpm extract`.
+- **A lista de encargo se corrige sem reextrair; as outras palavras-chave, não.** `POST
+  /category-rule/reapply` aplica a lista de encargo de agora ao que já está no banco, nos dois
+  sentidos — [como](#gasto-e-encargo-não-são-a-mesma-coisa). Já as palavras-chave que apenas repartem
+  o gasto (`uber` → transporte, `ifood` → restaurante) continuam congeladas em `sourceCategory`, e
+  corrigi-las ainda depende de um `pnpm extract` — ou de uma regra sua, que resolve caso a caso e
+  ganha da tabela. A diferença é deliberada: `sourceCategory` também guarda a categoria que o emissor
+  mandou e a memória por título, e uma palavra-chave genérica não deve atropelar as duas.
+- **Não há tela para o reapply.** A rota existe e é idempotente, mas quem quiser usá-la precisa de um
+  `curl` — na interface, a reclassificação só acontece de carona numa mudança de regra.
 - A reaplicação varre a coleção inteira a cada mudança de regra. Numa base pessoal — alguns milhares
   de compras, algumas centenas de títulos — isso some no tempo da requisição. Numa base grande,
   não sumiria.

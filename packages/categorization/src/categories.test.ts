@@ -6,7 +6,7 @@ import {
   isSpendingCategory,
   NON_SPENDING_CATEGORIES,
 } from './categories';
-import { categoryFromKeywords } from './keywords';
+import { categoryFromKeywords, isFinancingTitle } from './keywords';
 
 describe('isSpendingCategory', () => {
   it('deixa de fora o pagamento da fatura e os encargos', () => {
@@ -63,6 +63,25 @@ describe('encargos', () => {
   it('não confunde o IOF de uma compra com o do atraso', () => {
     assert.notEqual(categoryFromKeywords('IOF de Steam Purchase'), 'encargos');
     assert.notEqual(categoryFromKeywords('IOF de compra internacional'), 'encargos');
+  });
+
+  // `isFinancingTitle` é o que a reaplicação consulta para redecidir a camada de
+  // encargo sem depender do que a ingestão gravou.
+  it('responde pelo título, e concorda com a tabela de palavras-chave', () => {
+    assert.equal(isFinancingTitle('Multa de atraso'), true);
+    assert.equal(isFinancingTitle('IOF de atraso'), true);
+    assert.equal(isFinancingTitle('IOF de Steam Purchase'), false);
+    assert.equal(isFinancingTitle('PADARIA BELA VISTA'), false);
+    // Um vocabulário que a tabela ainda não cobre: é o caso que faz o mecanismo
+    // valer a pena, porque corrigir a lista passa a valer para o que já está no banco.
+    assert.equal(isFinancingTitle('Juros rotativo'), false);
+  });
+
+  // Encargo é o primeiro grupo da tabela, e isso é significativo: `Anuidade
+  // Academia` casaria com `academia` em saúde se a ordem fosse outra, e uma
+  // anuidade cobrada pelo emissor sairia do total pelo motivo errado.
+  it('ganha de outra palavra-chave que casasse com o mesmo título', () => {
+    assert.equal(categoryFromKeywords('Anuidade Academia'), 'encargos');
   });
 });
 

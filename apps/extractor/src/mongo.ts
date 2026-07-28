@@ -95,5 +95,8 @@ export function createPurchaseStore(purchases: Collection<Purchase>): PurchaseSt
       ]);
       return result.modifiedCount;
     },
+    async titlesWithSourceCategory(category) {
+      return purchases.distinct('title', { sourceCategory: category });
+    },
   };
 }

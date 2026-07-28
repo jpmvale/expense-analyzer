@@ -29,4 +29,10 @@ export interface UncategorizedTitle {
 export interface ReapplyResult {
   classified: number;
   restored: number;
+  /**
+   * Compras que a camada de encargo reescreveu — para `encargos` ou para fora
+   * dele. Vem separado de `classified` porque muda o total gasto do mês, e não só
+   * como ele se reparte.
+   */
+  financing: number;
 }

@@ -35,5 +35,8 @@ export function createPurchaseStore(purchaseModel: Model<PurchaseDocument>): Pur
         .exec();
       return result.modifiedCount;
     },
+    async titlesWithSourceCategory(category) {
+      return purchaseModel.distinct('title', { sourceCategory: category }).exec();
+    },
   };
 }
