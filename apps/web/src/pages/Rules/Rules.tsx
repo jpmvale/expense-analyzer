@@ -3,19 +3,23 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ConsolidationPanel } from '@/components/consolidation-panel';
 import { CategoryFilter } from '@/components/filters/category-filter';
 import { PageHeader } from '@/components/layout/app-shell';
+import { NewRuleForm, type NewRuleRequest } from '@/components/new-rule-form';
 import { RulesList } from '@/components/rules-list';
 import { StatCard } from '@/components/stat-card';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { Category } from '@/interface/category';
 import type { ConsolidationSuggestion, RuleUsage } from '@/interface/rule';
 import { capitalize } from '@/lib/utils';
 import {
   consolidateRules,
   deleteRule,
+  listCategories,
   listConsolidations,
   listRules,
+  saveRule,
 } from '../../api/client';
 
 /** Mesma normalização do servidor: caixa e acento não distinguem uma busca. */
@@ -42,14 +46,23 @@ function Rules() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [visible, setVisible] = useState(PAGE_SIZE);
 
+  // As categorias em que dá para apontar uma regra — vêm da API, e não das
+  // regras já existentes, porque incluem as que o usuário criou e ainda não usou.
+  const [categories, setCategories] = useState<Category[]>([]);
+
   const load = useCallback(async () => {
-    const [usage, consolidations] = await Promise.all([listRules(), listConsolidations()]);
+    const [usage, consolidations, known] = await Promise.all([
+      listRules(),
+      listConsolidations(),
+      listCategories(),
+    ]);
     setRules(usage);
     setSuggestions(consolidations);
+    setCategories(known);
   }, []);
 
   useEffect(() => {
@@ -67,10 +80,10 @@ function Rules() {
     const needle = normalize(search.trim());
     return rules.filter(
       (rule) =>
-        (categories.length === 0 || categories.includes(rule.category)) &&
+        (categoryFilter.length === 0 || categoryFilter.includes(rule.category)) &&
         (needle === '' || normalize(rule.value).includes(needle)),
     );
-  }, [rules, categories, search]);
+  }, [rules, categoryFilter, search]);
 
   const totals = useMemo(
     () => ({
@@ -80,7 +93,7 @@ function Rules() {
     [rules],
   );
 
-  const hasFilters = categories.length > 0 || search !== '';
+  const hasFilters = categoryFilter.length > 0 || search !== '';
 
   /**
    * Executa a escrita, recarrega e conta o que mudou.
@@ -122,6 +135,29 @@ function Rules() {
           category: suggestion.category,
         });
         return `${deleted} regras viraram uma. ${classified} compras reclassificadas em ${capitalize(suggestion.category)}.`;
+      }),
+    [run],
+  );
+
+  /**
+   * Muda o destino de uma regra que já existe. Reaproveita o mesmo `POST` que
+   * cria: `kind` e `value` ficam iguais, então a API acha a regra pelo par e
+   * atualiza a categoria em vez de duplicar — não existe rota própria para isso.
+   */
+  const editRule = useCallback(
+    (rule: RuleUsage, category: string) =>
+      run(async () => {
+        const { classified } = await saveRule({ kind: rule.kind, value: rule.value, category });
+        return `${classified} ${classified === 1 ? 'compra passou' : 'compras passaram'} para ${capitalize(category)}.`;
+      }),
+    [run],
+  );
+
+  const createRule = useCallback(
+    ({ kind, value, category }: NewRuleRequest) =>
+      run(async () => {
+        const { classified } = await saveRule({ kind, value, category });
+        return `${classified} ${classified === 1 ? 'compra foi' : 'compras foram'} para ${capitalize(category)}.`;
       }),
     [run],
   );
@@ -183,9 +219,11 @@ function Rules() {
         <>
           <ConsolidationPanel suggestions={suggestions} onApply={consolidate} />
 
+          <NewRuleForm categories={categories} onCreate={createRule} />
+
           <Card className="mb-4 p-3 sm:p-4">
             <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-              <CategoryFilter options={options} value={categories} onChange={setCategories} />
+              <CategoryFilter options={options} value={categoryFilter} onChange={setCategoryFilter} />
               <div className="relative">
                 <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -203,7 +241,7 @@ function Rules() {
                 <Button
                   variant="ghost"
                   onClick={() => {
-                    setCategories([]);
+                    setCategoryFilter([]);
                     setSearch('');
                   }}
                   className="justify-start sm:justify-center"
@@ -218,7 +256,12 @@ function Rules() {
             </p>
           </Card>
 
-          <RulesList rules={filtered.slice(0, visible)} onDelete={remove} />
+          <RulesList
+            rules={filtered.slice(0, visible)}
+            categories={categories}
+            onDelete={remove}
+            onEdit={editRule}
+          />
 
           {visible < filtered.length && (
             <div className="mt-4 flex justify-center">

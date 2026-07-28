@@ -33,6 +33,30 @@ pnpm dev               # API + front
 
 ---
 
+## ✅ FEITO (2026-07-28) — destino de regra editável, e criação manual pelo trecho
+
+Os dois furos da pendência abaixo fecharam sem rota nova: `upsertRule` já fazia upsert por
+`(kind, value)` — mandar o mesmo par com categoria diferente edita em vez de duplicar. Faltava só o
+front usar isso.
+
+Na lista, o destino da regra virou um `CategoryPicker` clicável, mesmo raciocínio da categoria
+clicável na tabela de Compras — a correção fica onde o erro é notado. E um formulário novo no topo da
+tela (`NewRuleForm`) deixa digitar um trecho do zero, com o mesmo padrão de `UncategorizedList`:
+escolher a categoria já submete, sem botão de salvar separado.
+
+O que continua faltando, e por quê: mudar o **trecho** ou o **tipo** de uma regra que já existe ainda
+é apagar e criar de novo. Editar esses dois campos exigiria decidir o que fazer com as compras que a
+forma antiga da regra já classificou — não é a mesma operação simples de trocar destino, e não estava
+no escopo desta pendência.
+
+Verificado contra a base real, e não contra fixture: criei `TESTE-CLAUDE-VERIFICACAO` (`contains` →
+`restaurante`), confirmei por `curl` que gravou com `_id` próprio, editei o destino para `serviços` e
+confirmei que o **mesmo `_id`** mudou de categoria — não duplicou —, apaguei pela tela e confirmei que
+a base voltou a 244 regras sem sobra. Console sem erro nos três passos; mobile sem overflow horizontal
+no formulário novo.
+
+---
+
 ## ✅ FEITO (2026-07-28) — cartão "Mudou de preço" na Visão geral
 
 A pendência logo abaixo dizia que o alerta hoje renderia um cartão de uma linha só — sinal fraco
@@ -171,9 +195,9 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
 
 - **O aviso de reajuste não sai da tela.** O cartão "Mudou de preço" está na Visão geral, mas só
   quem abrir a página o vê — não há push, e-mail nem nada que chegue sozinho.
-- **A tela de Regras lista e apaga, mas não edita.** Mudar o destino de uma regra é criá-la de novo
-  apontando para a categoria certa, e não dá para digitar um trecho à mão — ele sai do agrupamento,
-  do título clicado ou de uma sugestão.
+- **O trecho e o tipo de uma regra não são editáveis, só o destino.** Mudar `value` ou `kind` de uma
+  regra que já existe é apagar e criar de novo — editar os dois exigiria decidir o que fazer com as
+  compras que a forma antiga já tinha classificado.
 - **A consolidação não enxerga sufixo comum, só prefixo.** `Ebanx*Spotify` e `Dm *Spotify` não geram
   candidato, ainda que "spotify" seja o que os une. E conflito é binário: cobrir 50 regras
   conflitando com 1 é tão bloqueado quanto conflitar com 22, embora o primeiro se resolvesse

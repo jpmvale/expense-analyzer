@@ -34,7 +34,7 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês, com o fundo da célula proporcional ao peso. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. Meses com juros ou multa vêm marcados, e o valor aparece à parte do gasto. |
 | **Encargo ≠ gasto** | Juros, multa e saldo rolado saem do total gasto e ganham linha própria. Somá-los respondia "quanto você gastou" com dinheiro que ninguém gastou — [detalhes abaixo](#gasto-e-encargo-não-são-a-mesma-coisa). |
 | **Assinaturas** | Detecta as cobranças que se repetem todo mês com preço estável e mostra a **escada de preços** de cada uma: quando mudou, de quanto para quanto. É o que o app do banco não faz, porque depende de anos de série contínua — [como funciona](#como-uma-assinatura-é-detectada). Cada uma abre num painel com o **gráfico da evolução do preço**, e você pode dar a ela um **nome formal** — `Mp *Melimais` vira `Meli+` — que sobrevive à troca de gateway. |
-| **Regras** | Lista todas as decisões de classificação que você tomou, com quantas compras cada uma **governa** de fato. E aponta onde um punhado de regras de título exato viraria uma só por trecho — dizendo, quando for o caso, o que essa troca levaria junto — [critério](#onde-dá-para-juntar-regras). |
+| **Regras** | Lista todas as decisões de classificação que você tomou, com quantas compras cada uma **governa** de fato. O destino de uma regra se muda direto na lista, e dá para criar uma nova digitando o trecho à mão — as duas coisas reaproveitam o mesmo `POST` que já existia. A tela também aponta onde um punhado de regras de título exato viraria uma só por trecho, dizendo o que essa troca levaria junto — [critério](#onde-dá-para-juntar-regras). |
 | **API** | REST documentada em OpenAPI/Swagger, com validação dos filtros. |
 
 > **Sobre "outros".** Em julho de 2024 o emissor parou de classificar e passou a carimbar `outros`
@@ -780,10 +780,11 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
 - **Não há autenticação, e a API agora escreve.** Até então ela era só leitura; as rotas de
   categoria e de regra mudam o banco sem pedir nada a ninguém. Suba num ambiente confiável, não na
   internet pública.
-- **Regras se editam criando por cima, ou apagando.** A tela de Regras lista, filtra, mostra quantas
-  compras cada uma governa e apaga — mas não edita: para mudar o destino de uma regra, crie-a de novo
-  apontando para a categoria certa. Também não dá para digitar um trecho à mão; ele sai do
-  agrupamento da API, do título clicado ou de uma sugestão de consolidação.
+- **Só o destino de uma regra é editável — trecho e tipo, não.** Mudar a categoria acontece direto na
+  lista, e criar do zero digitando o trecho também é possível agora; as duas ações mandam o mesmo
+  `POST /category-rule` de sempre, que já fazia upsert por `(kind, value)` — não precisou de rota
+  nova. O que continua faltando é editar o `trecho` ou o tipo (`exact`/`contains`) de uma regra que já
+  existe: isso ainda é apagar e criar de novo.
 - **A lista de encargo se corrige sem reextrair; as outras palavras-chave, não.** `POST
   /category-rule/reapply` aplica a lista de encargo de agora ao que já está no banco, nos dois
   sentidos — [como](#gasto-e-encargo-não-são-a-mesma-coisa). Já as palavras-chave que apenas repartem

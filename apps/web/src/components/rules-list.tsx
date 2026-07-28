@@ -1,17 +1,23 @@
 import { Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
+import { CategoryPicker } from '@/components/category-picker';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import type { Category } from '@/interface/category';
 import type { RuleUsage } from '@/interface/rule';
 import { capitalize, cn, formatDate } from '@/lib/utils';
 
 function Row({
   rule,
+  categories,
   onDelete,
+  onEdit,
 }: {
   rule: RuleUsage;
+  categories: Category[];
   onDelete: (rule: RuleUsage) => Promise<void>;
+  onEdit: (rule: RuleUsage, category: string) => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -23,7 +29,35 @@ function Row({
             {rule.kind === 'contains' ? 'contém' : 'exato'}
           </Badge>
           <span className="truncate text-sm font-medium">{rule.value}</span>
-          <span className="text-xs text-muted-foreground">→ {capitalize(rule.category)}</span>
+
+          {/*
+           * O destino é o que se erra olhando a lista, e a correção fica onde o
+           * erro é notado — o mesmo raciocínio da categoria clicável na tabela de
+           * Compras. Antes disso, mudar o destino de uma regra era recriá-la do
+           * zero apontando para a categoria certa.
+           */}
+          <CategoryPicker
+            categories={categories}
+            value={rule.category}
+            align="start"
+            onSelect={async (category) => {
+              setBusy(true);
+              try {
+                await onEdit(rule, category);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-sm text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground hover:decoration-solid"
+              aria-label={`Mudar o destino da regra ${rule.value}`}
+            >
+              → {capitalize(rule.category)}
+            </button>
+          </CategoryPicker>
         </div>
         <p className="tabular mt-0.5 text-xs text-muted-foreground">
           {/*
@@ -65,10 +99,14 @@ function Row({
 
 export function RulesList({
   rules,
+  categories,
   onDelete,
+  onEdit,
 }: {
   rules: RuleUsage[];
+  categories: Category[];
   onDelete: (rule: RuleUsage) => Promise<void>;
+  onEdit: (rule: RuleUsage, category: string) => Promise<void>;
 }) {
   if (rules.length === 0) {
     return (
@@ -82,7 +120,13 @@ export function RulesList({
     <Card className="overflow-hidden">
       <ul className="divide-y divide-border">
         {rules.map((rule) => (
-          <Row key={rule._id} rule={rule} onDelete={onDelete} />
+          <Row
+            key={rule._id}
+            rule={rule}
+            categories={categories}
+            onDelete={onDelete}
+            onEdit={onEdit}
+          />
         ))}
       </ul>
     </Card>
