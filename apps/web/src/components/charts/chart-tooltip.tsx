@@ -6,13 +6,25 @@ interface ChartTooltipProps {
   payload?: Array<{ value?: number; payload?: { label?: string; count?: number } }>;
   /** Como escrever o rótulo do eixo no cabeçalho do tooltip. */
   formatLabel?: (label: string) => string;
+  /**
+   * O substantivo de `count`. O padrão serve para gasto — onde a barra soma
+   * lançamentos de um mês —, mas numa assinatura a barra é um preço, e o que se
+   * conta são as cobranças que o sustentaram.
+   */
+  countLabel?: (count: number) => string;
 }
 
 /**
  * Tooltip dos gráficos. O texto usa tokens de tinta, nunca a cor da série — a
  * identidade fica na marca colorida ao lado, não na letra.
  */
-export function ChartTooltip({ active, label, payload, formatLabel }: ChartTooltipProps) {
+export function ChartTooltip({
+  active,
+  label,
+  payload,
+  formatLabel,
+  countLabel,
+}: ChartTooltipProps) {
   if (!active || !payload?.length) return null;
 
   const point = payload[0];
@@ -29,7 +41,7 @@ export function ChartTooltip({ active, label, payload, formatLabel }: ChartToolt
       </p>
       {count !== undefined && (
         <p className="tabular mt-0.5 text-muted-foreground">
-          {count} {count === 1 ? 'lançamento' : 'lançamentos'}
+          {countLabel ? countLabel(count) : `${count} ${count === 1 ? 'lançamento' : 'lançamentos'}`}
         </p>
       )}
     </div>

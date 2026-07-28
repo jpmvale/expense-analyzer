@@ -1,10 +1,12 @@
 import { FALLBACK_CATEGORY, NON_SPENDING_CATEGORIES } from '@expense/categorization';
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Purchase, PurchaseDocument } from '../schemas/purchase.schema';
+import { Subscription, SubscriptionDocument } from '../schemas/subscription.schema';
 import { Bill, buildBills, round } from './bill-aggregation';
 import { ListPurchasesQueryDto } from './dto/list-purchases-query.dto';
+import { NameSubscriptionDto } from './dto/subscription.dto';
 import { buildPurchaseFilter } from './purchase-filter';
 import { buildRecurringCharges, RecurringCharge } from './recurring';
 import { buildUncategorizedTitles, UncategorizedTitle } from './uncategorized';
@@ -13,10 +15,21 @@ export type { Bill, CategoryBreakdown } from './bill-aggregation';
 export type { PricePlateau, RecurringCharge } from './recurring';
 export type { UncategorizedTitle } from './uncategorized';
 
+/**
+ * A assinatura como a tela recebe: a detecção mais o apelido do usuário.
+ *
+ * O nome fica fora de `RecurringCharge` de propósito. Aquele tipo é o resultado
+ * de uma função pura sobre as compras, e é o que decide o que é assinatura e qual
+ * é o degrau; um rótulo guardado no banco não tem nada a dizer sobre isso.
+ */
+export type NamedRecurringCharge = RecurringCharge & { name: string | null };
+
 @Injectable()
 export class PurchaseService {
   constructor(
     @InjectModel(Purchase.name) private readonly purchaseModel: Model<PurchaseDocument>,
+    @InjectModel(Subscription.name)
+    private readonly subscriptionModel: Model<SubscriptionDocument>,
   ) {}
 
   async listPurchases(filter: ListPurchasesQueryDto) {
@@ -74,12 +87,48 @@ export class PurchaseService {
    * escada de preços do Spotify começa em 2019, e qualquer janela mais curta
    * acharia um patamar só e nenhum degrau.
    */
-  async listRecurring(): Promise<RecurringCharge[]> {
-    const purchases = await this.purchaseModel
-      .find({ category: { $nin: NON_SPENDING_CATEGORIES } })
-      .select('title amount date')
+  async listRecurring(): Promise<NamedRecurringCharge[]> {
+    const [purchases, names] = await Promise.all([
+      this.purchaseModel
+        .find({ category: { $nin: NON_SPENDING_CATEGORIES } })
+        .select('title amount date')
+        .exec(),
+      this.subscriptionModel.find().select('key name').exec(),
+    ]);
+
+    const byKey = new Map(names.map((subscription) => [subscription.key, subscription.name]));
+
+    // O nome é rótulo, então ele se junta aqui e não dentro da detecção: o que
+    // decide o que é assinatura continua sendo função pura das compras, e um
+    // apelido não pode mudar agrupamento, degrau nem ordem da lista.
+    return buildRecurringCharges(purchases).map((charge) => ({
+      ...charge,
+      name: byKey.get(charge.key) ?? null,
+    }));
+  }
+
+  /**
+   * Batiza uma assinatura. Rebatizar sobrescreve, em vez de empilhar um segundo
+   * nome para a mesma chave.
+   *
+   * Não valida se a chave existe hoje: a detecção depende de haver seis meses de
+   * série, e uma assinatura pode sair da lista por um tempo — invalidar o nome
+   * nesse intervalo perderia o apelido justamente de quem cancelou e voltou.
+   */
+  async nameSubscription(dto: NameSubscriptionDto): Promise<SubscriptionDocument> {
+    const key = dto.key.trim();
+    const name = dto.name.trim();
+
+    const saved = await this.subscriptionModel
+      .findOneAndUpdate({ key }, { $set: { name } }, { new: true, upsert: true })
       .exec();
 
-    return buildRecurringCharges(purchases);
+    return saved;
+  }
+
+  /** Devolve a assinatura ao título que vem no cartão. */
+  async clearSubscriptionName(key: string): Promise<void> {
+    const result = await this.subscriptionModel.findOneAndDelete({ key }).exec();
+    if (!result) throw new NotFoundException('Essa assinatura não tem nome formal.');
   }
 }

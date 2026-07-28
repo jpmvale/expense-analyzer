@@ -1,6 +1,7 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ListPurchasesQueryDto } from './dto/list-purchases-query.dto';
+import { NameSubscriptionDto } from './dto/subscription.dto';
 import { PurchaseService } from './purchase.service';
 
 @ApiTags('purchase')
@@ -34,5 +35,30 @@ export class PurchaseController {
   })
   listUncategorized() {
     return this.purchaseService.listUncategorized();
+  }
+}
+
+/**
+ * O nome formal de uma assinatura. Recurso próprio porque não é uma compra: a
+ * assinatura é derivada a cada requisição, e o que se guarda é só o apelido.
+ */
+@ApiTags('purchase')
+@Controller('subscription')
+export class SubscriptionController {
+  constructor(private readonly purchaseService: PurchaseService) {}
+
+  @Post()
+  @ApiOperation({
+    summary: 'Batiza a assinatura — rebatizar sobrescreve o nome que estava lá',
+  })
+  nameSubscription(@Body() dto: NameSubscriptionDto) {
+    return this.purchaseService.nameSubscription(dto);
+  }
+
+  @Delete(':key')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Tira o nome formal e devolve a assinatura ao título do cartão' })
+  clearSubscriptionName(@Param('key') key: string) {
+    return this.purchaseService.clearSubscriptionName(key);
   }
 }

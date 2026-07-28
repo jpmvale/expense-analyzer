@@ -30,7 +30,7 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | **Visão geral** | A home: última fatura fechada com a variação contra o mês anterior, média dos doze meses anteriores, total do ano e a composição do mês. O recorte de "fechada" é o fim do ciclo de compras, não o mês do vencimento: o que ainda não fechou — o ciclo em aberto e as parcelas lançadas à frente — aparece à parte, fora dos agregados. O cartão **Fora do normal** compara cada categoria contra o próprio histórico — [como](#o-que-conta-como-fora-do-normal). |
 | **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês, com o fundo da célula proporcional ao peso. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. Meses com juros ou multa vêm marcados, e o valor aparece à parte do gasto. |
 | **Encargo ≠ gasto** | Juros, multa e saldo rolado saem do total gasto e ganham linha própria. Somá-los respondia "quanto você gastou" com dinheiro que ninguém gastou — [detalhes abaixo](#gasto-e-encargo-não-são-a-mesma-coisa). |
-| **Assinaturas** | Detecta as cobranças que se repetem todo mês com preço estável e mostra a **escada de preços** de cada uma: quando mudou, de quanto para quanto. É o que o app do banco não faz, porque depende de anos de série contínua — [como funciona](#como-uma-assinatura-é-detectada). |
+| **Assinaturas** | Detecta as cobranças que se repetem todo mês com preço estável e mostra a **escada de preços** de cada uma: quando mudou, de quanto para quanto. É o que o app do banco não faz, porque depende de anos de série contínua — [como funciona](#como-uma-assinatura-é-detectada). Cada uma abre num painel com o **gráfico da evolução do preço**, e você pode dar a ela um **nome formal** — `Mp *Melimais` vira `Meli+` — que sobrevive à troca de gateway. |
 | **API** | REST documentada em OpenAPI/Swagger, com validação dos filtros. |
 
 > **Sobre "outros".** Em julho de 2024 o emissor parou de classificar e passou a carimbar `outros`
@@ -486,7 +486,9 @@ qualquer janela mais curta acharia um patamar só e nenhum degrau.
 
 ```jsonc
 {
+  "key": "spotify",                       // identidade do grupo: normalizado e sem gateway
   "title": "Dm *Spotify",                 // a forma mais frequente do título
+  "name": "Spotify",                      // o apelido, ou null — ver POST /subscription
   "titles": ["Dm *Spotify", "Ebanx*Spotify", "Ebw*Spotify"],  // as 8 formas agrupadas
   "charges": 84,
   "months": 77,
@@ -501,6 +503,27 @@ qualquer janela mais curta acharia um patamar só e nenhum degrau.
   ]
 }
 ```
+
+### O nome formal de uma assinatura
+
+| Rota | O que faz |
+| --- | --- |
+| `POST /subscription` | `{ "key": "melimais", "name": "Meli+" }` — batiza. Rebatizar sobrescreve |
+| `DELETE /subscription/:key` | Tira o apelido e devolve a assinatura ao título do cartão |
+
+A chave é o `key` do `GET /purchase/recurring`, e é **por isso** que ela existe: o apelido não pode se
+prender ao título cru. `Dm *Spotify` já chegou como `Ebanx*Spotify`, `Ebw*Spotify` e outras cinco
+formas, e um nome preso a uma delas se perderia na fatura em que o gateway mudasse. A chave é o
+título normalizado e sem o prefixo do gateway, a mesma que agrupa a série.
+
+O preço disso é que a chave é derivada, não fornecida: mudar `stripGateway` ou `normalize` pode
+reagrupar a base e deixar um apelido apontando para uma chave que não existe mais. Um apelido órfão é
+inofensivo — a tela volta ao título do cartão —, mas é silencioso.
+
+O nome é só rótulo. Não muda categoria, total, agrupamento nem a ordem da lista, e a detecção
+continua sendo função pura das compras: o `POST` grava numa coleção à parte e a API junta os dois na
+leitura. Por isso batizar não exige que a assinatura esteja na lista hoje — quem cancelou e voltou
+mantém o apelido durante o intervalo em que a série ficou curta demais para ser detectada.
 
 ### `GET /purchase/uncategorized`
 

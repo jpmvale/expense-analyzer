@@ -85,6 +85,20 @@ export function listRecurring(): Promise<RecurringCharge[]> {
   return getJson<RecurringCharge[]>('/purchase/recurring');
 }
 
+/**
+ * Batiza a assinatura. A chave vai no corpo e não na URL porque ela é o título
+ * normalizado — carrega espaço e `*` (`ifd*dominos p`), e um path com isso dentro
+ * só funciona escapado.
+ */
+export function nameSubscription(key: string, name: string): Promise<{ key: string; name: string }> {
+  return sendJson('POST', '/subscription', { key, name });
+}
+
+/** Aqui a chave vai na URL, escapada, porque DELETE não leva corpo. */
+export function clearSubscriptionName(key: string): Promise<void> {
+  return request<void>(`/subscription/${encodeURIComponent(key)}`, { method: 'DELETE' });
+}
+
 export function listUncategorized(): Promise<UncategorizedTitle[]> {
   return getJson<UncategorizedTitle[]>('/purchase/uncategorized');
 }

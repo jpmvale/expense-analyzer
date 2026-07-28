@@ -19,7 +19,22 @@ export interface PricePlateau {
 }
 
 export interface RecurringCharge {
-  /** A forma mais frequente do título. É o que a tela mostra. */
+  /**
+   * A identidade estável do grupo: o título normalizado e sem o gateway.
+   *
+   * É a que um nome formal se prende, e é a única coisa aqui que dá para guardar
+   * no banco. O título cru não serve: o mesmo Spotify já chegou sob oito
+   * gateways, e um nome preso a `Dm *Spotify` se perderia no mês em que a
+   * cobrança voltasse como `Ebn *Spotify`.
+   *
+   * O preço disso é que a chave depende de `stripGateway` e `normalize`: mudar
+   * qualquer uma das duas pode reagrupar a base e deixar um nome órfão, apontando
+   * para uma chave que não existe mais. Um nome órfão é inofensivo — a tela cai
+   * de volta no título cru —, mas é invisível, e é o que se paga por não ter um
+   * identificador que o emissor forneça.
+   */
+  key: string;
+  /** A forma mais frequente do título. É o que a tela mostra sem nome formal. */
   title: string;
   /** Todas as formas cruas que caíram no grupo, da mais frequente à menos. */
   titles: string[];
@@ -164,7 +179,7 @@ export function buildRecurringCharges(
 
   const found: RecurringCharge[] = [];
 
-  for (const group of groups.values()) {
+  for (const [key, group] of groups) {
     const sorted = [...group.items].sort((a, b) => a.date.getTime() - b.date.getTime());
     if (sorted.length < MIN_CHARGES) continue;
 
@@ -190,6 +205,7 @@ export function buildRecurringCharges(
       .map(([raw]) => raw);
 
     found.push({
+      key,
       title,
       titles: [title, ...rest],
       charges: sorted.length,

@@ -1,5 +1,5 @@
 import { AlertCircleIcon, ArchiveIcon, RepeatIcon, TrendingUpIcon, WalletIcon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/layout/app-shell';
 import { RecurringList } from '@/components/recurring-list';
 import { StatCard } from '@/components/stat-card';
@@ -14,12 +14,19 @@ function Recurring() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Recarrega a lista inteira depois de batizar uma assinatura, em vez de mexer
+  // no estado local. A ordem da lista não depende do nome — ela é por atividade e
+  // pelo tamanho do degrau —, então nada salta de lugar, e o painel aberto é
+  // rastreado pela chave do grupo, que a recarga não muda.
+  const load = useCallback(async () => {
+    setCharges(await listRecurring());
+  }, []);
+
   useEffect(() => {
-    listRecurring()
-      .then(setCharges)
+    load()
       .catch((cause: Error) => setError(cause.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [load]);
 
   const { active, ended, monthly, yearlyIncrease } = useMemo(() => {
     const active = charges.filter((charge) => charge.active);
@@ -107,7 +114,7 @@ function Recurring() {
                 <RepeatIcon className="size-4 text-muted-foreground" />
                 Ativas
               </h2>
-              <RecurringList charges={active} />
+              <RecurringList charges={active} onRenamed={load} />
             </section>
           )}
 
@@ -120,7 +127,7 @@ function Recurring() {
               {/* Ficam na tela porque é onde se confere se um cancelamento
                   pegou — e porque o histórico de preço de algo que você já teve
                   é o que dá noção de quanto o mercado subiu. */}
-              <RecurringList charges={ended} />
+              <RecurringList charges={ended} onRenamed={load} />
             </section>
           )}
         </div>

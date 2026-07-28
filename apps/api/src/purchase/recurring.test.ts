@@ -72,6 +72,36 @@ describe('buildRecurringCharges', () => {
     assert.equal(achado.previous, 19.9);
   });
 
+  // A chave é o que um nome formal guardado no banco encontra de volta. Prendê-lo
+  // ao título cru perderia o apelido no mês em que o gateway mudasse — e é a
+  // mesma chave para as oito formas do Spotify.
+  it('dá ao grupo uma chave estável, sem gateway e sem caixa', () => {
+    const [achado] = buildRecurringCharges(
+      [
+        ...serie('Ebanx *Spotify', '2025-01', plato(19.9, 5)),
+        ...serie('DM*SPOTIFY', '2025-06', plato(23.9, 5)),
+      ],
+      HOJE,
+    );
+
+    assert.equal(achado.key, 'spotify');
+    // O título continua sendo a forma crua mais frequente, para a tela poder
+    // mostrar de onde o nome veio.
+    assert.equal(achado.titles.length, 2);
+  });
+
+  it('separa em chaves diferentes estabelecimentos diferentes', () => {
+    const achados = buildRecurringCharges(
+      [
+        ...serie('Mp *Melimais', '2025-01', plato(19.9, 8)),
+        ...serie('Dm *Spotify', '2025-01', plato(23.9, 8)),
+      ],
+      HOJE,
+    );
+
+    assert.deepEqual(new Set(achados.map((c) => c.key)), new Set(['melimais', 'spotify']));
+  });
+
   // O valor oscila sem parar: é fornecedor, não assinatura. Sem esta regra,
   // `Comercial Ovolar` entra com 45 compras e 21 patamares.
   it('ignora série de valor instável, mesmo em cadência mensal', () => {
