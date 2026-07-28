@@ -120,6 +120,33 @@ describe('buildCategoryExpectations', () => {
     assert.ok(Math.abs(achados[0].difference) > Math.abs(achados[1].difference));
   });
 
+  // O corte era 2,5, calibrado sobre uma série que atrasava um ciclo. Sobre 24
+  // meses da série certa ele silenciava `Mercado Livre` a R$ 1.392 acima do normal
+  // (z=2,44) e `supermercado` a +R$ 584 (z=2,43) — dinheiro real com sinal real.
+  it('acusa o mês entre 2,25 e 2,5 desvios, que o corte antigo silenciava', () => {
+    const serie = [400, 400, 400, 400, 400, 600, 600, 600, 600, 600, 500, 500];
+    const [achado] = buildCategoryExpectations(historia('supermercado', serie, 850));
+
+    assert.equal(achado.baseline, 500);
+    assert.ok(achado.deviations > 2.25 && achado.deviations < 2.5);
+
+    // E cala de novo se o corte volta para onde estava.
+    assert.deepEqual(
+      buildCategoryExpectations(historia('supermercado', serie, 850), { minDeviations: 2.5 }),
+      [],
+    );
+  });
+
+  // `outros` mede o quanto você classificou, não o quanto gastou: na base de
+  // referência oscila entre 0,7% e 18,1% do mês, e os alertas que gerava diziam
+  // "R$ 540 em não-classificado contra R$ 12 de normal". E são inacionáveis —
+  // não dá para cortar `outros`.
+  it('deixa a categoria de fallback fora da comparação', () => {
+    assert.deepEqual(buildCategoryExpectations(historia('outros', estavel(50), 900)), []);
+    // A mesma série em qualquer outra categoria acusa.
+    assert.equal(buildCategoryExpectations(historia('mercado', estavel(50), 900)).length, 1);
+  });
+
   it('devolve percentual nulo quando não havia base', () => {
     const metade = [0, 300, 0, 300, 0, 300, 0, 300, 0, 300, 0, 300];
     const achados = buildCategoryExpectations(historia('Farmácia', metade, 1200));

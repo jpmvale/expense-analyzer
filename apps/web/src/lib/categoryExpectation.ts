@@ -48,13 +48,36 @@ const MIN_DIFFERENCE = 150;
  * categorias, e duas eram oscilação normal — `serviços` a −49% estava a 0,7
  * desvio, e `Bebidas` a −51% estava a 0,4. Amazon, no mesmo mês, estava a 13,6.
  *
- * Calibrado sobre doze meses e não sobre um: a 2,5 desvios saem 1,7 alertas por
- * mês, com um mês em doze sem nenhum. Mês silencioso é resposta, não falha.
+ * Já foi 2,5, calibrado sobre doze meses de uma série que atrasava um ciclo (o
+ * recorte de fatura fechada estava errado). Refeita a conta sobre 24 meses da
+ * série certa, 2,5 rendia 1,3 alerta por mês e **oito** meses calados em 24 —
+ * mais quieto do que se queria, e a um custo concreto: silenciava `Mercado Livre`
+ * a R$ 1.392 acima do normal (z=2,44) e `supermercado` a +R$ 584 (z=2,43).
+ *
+ * A 2,25 saem 1,6 alertas por mês com seis meses calados em 24, que é a mira
+ * original — mês silencioso continua sendo resposta, não falha. Os seis alertas
+ * que 2,25 acrescenta em 24 meses são todos gasto real; nenhum é `outros`. Baixar
+ * mais não paga: 2,0 acrescenta seis e dobra a presença de `outros`.
  */
-const MIN_DEVIATIONS = 2.5;
+const MIN_DEVIATIONS = 2.25;
 
 /** Converte o desvio absoluto mediano na escala do desvio-padrão. */
 const MAD_TO_SIGMA = 1.4826;
+
+/**
+ * A categoria de fallback fica fora da comparação.
+ *
+ * Espelha `FALLBACK_CATEGORY` de `@expense/categorization`, que o front não
+ * consome — o pacote é compartilhado entre a ingestão e a API, e arrastá-lo para
+ * cá por uma string custaria mais do que resolve.
+ *
+ * Ela não descreve consumo: na base de referência oscila entre 0,7% e 18,1% do
+ * mês, e o que move isso é quanto você classificou, não quanto gastou. Os quatro
+ * alertas que ela gerava em 24 meses diziam "R$ 540 em não-classificado contra
+ * R$ 12 de normal" — notícia sobre a fila da tela *Sem categoria*, não sobre
+ * gasto. E o alerta seria inacionável: não dá para cortar `outros`.
+ */
+const FALLBACK_CATEGORY = 'outros';
 
 function median(values: number[]): number {
   if (values.length === 0) return 0;
@@ -100,6 +123,8 @@ export function buildCategoryExpectations(
   const found: CategoryExpectation[] = [];
 
   for (const category of categories) {
+    if (category === FALLBACK_CATEGORY) continue;
+
     // O mês sem a categoria conta como zero, e isso é o ponto: deixar de gastar
     // é tão informativo quanto gastar demais, e pular o mês faria a mediana
     // descrever só os meses em que houve compra.

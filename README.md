@@ -241,9 +241,10 @@ relativo à variação da própria categoria; o percentual só aparece na tela, 
 | --- | --- |
 | Referência é a **mediana** dos 12 meses anteriores | Uma viagem de R$ 2.600 num mês levantaria a média de transporte pelo ano inteiro e esconderia justamente o mês em que o gasto fugiu. |
 | Dispersão medida pelo **desvio absoluto mediano** | Pelo mesmo motivo: o desvio-padrão é inflado pelo próprio pico que se quer detectar. |
-| ≥ 2,5 desvios | Calibrado sobre doze meses, não sobre um: dá 1,7 alerta por mês, com um mês em doze sem nenhum. |
+| ≥ 2,25 desvios | Calibrado sobre 24 meses. Era 2,5, medido sobre doze meses de uma série que atrasava um ciclo — [ver abaixo](#por-que-o-corte-desceu-de-25-para-225). |
 | ≥ R$ 150 de diferença | Percentual mente na escala pequena — uma categoria de R$ 12 que vai a R$ 30 subiu 150% e não mudou nada. |
 | ≥ 6 dos 12 meses com gasto | Quem aparece em quatro meses não tem "normal", tem esporadicidade, e compará-la geraria alarme a cada compra. Corta `viagem` (1/12), `eletrônicos` (1/12), `Shein` (2/12), `Carro` e `casa` (4/12). |
+| `outros` fica fora | A categoria de fallback não descreve consumo: oscila entre 0,7% e 18,1% do mês na base de referência, e o que move isso é quanto você classificou. Os quatro alertas que ela gerava em 24 meses diziam "R$ 540 em não-classificado contra R$ 12 de normal" — notícia sobre a fila de *Sem categoria*, e inacionável: não dá para cortar `outros`. |
 
 O mês em que a categoria não aparece conta como **zero**, e isso é o ponto: deixar de gastar é tão
 informativo quanto gastar demais. Na base de referência, `Combustível` acendeu dois meses seguidos
@@ -251,6 +252,32 @@ por ter ido a zero.
 
 O desvio em si **não vai para a tela**. Uma categoria muito previsível tem dispersão minúscula, e aí
 um mês fora da curva dá z=47 — matematicamente certo e ilegível. Quem lê quer reais e percentual.
+
+### Por que o corte desceu de 2,5 para 2,25
+
+O 2,5 foi calibrado sobre doze meses de uma série errada: o recorte de "fatura fechada" atrasava um
+ciclo, então o mês avaliado e a calibração vinham ambos do ciclo anterior. Refeita a conta sobre 24
+meses da série corrigida:
+
+| corte | alertas/mês | meses calados | `outros` em 24 meses |
+| --- | --- | --- | --- |
+| 3,00 | 1,1 | 9 de 24 | 3 |
+| 2,50 | 1,3 | 8 de 24 | 4 |
+| **2,25** | **1,6** | **6 de 24** | **4** |
+| 2,00 | 1,8 | 5 de 24 | 6 |
+
+A 2,5 o cartão ficava mais quieto do que se pretendia — a mira era ~1,7 alerta por mês — e a um custo
+concreto: silenciava `Mercado Livre` a R$ 1.392 acima do normal (z=2,44), `supermercado` a +R$ 584
+(z=2,43) e `restaurante` a +R$ 357 (z=2,35). Os seis alertas que 2,25 acrescenta em 24 meses são todos
+gasto real, e nenhum é `outros`. Descer para 2,0 acrescenta seis e dobra a presença de `outros` — que
+agora está fora de todo jeito.
+
+Seis meses calados em 24 é a propriedade que se queria preservar: "nada fugiu do normal" continua
+sendo uma resposta, não uma falha.
+
+**O que 2,25 continua silenciando, e certo:** `Mercado Livre` a +R$ 573 num mês em que isso é 0,73
+desvio — grande em reais e dentro do normal dele. Esse número está na *Composição do mês*, ao lado,
+que é onde se lê tamanho. Este cartão responde outra pergunta.
 
 ### Onde a comparação falha
 
@@ -264,10 +291,14 @@ um mês fora da curva dá z=47 — matematicamente certo e ilegível. Quem lê q
   últimas semanas fica de fora até o ciclo virar — é a escolha certa (metade de um mês contra doze
   meses inteiros acusaria queda em tudo), mas significa que a notícia chega uma vez por ciclo, não
   quando a compra acontece.
-- **O corte é uma linha, e perto dela ele silencia gasto grande.** Em ago/26 o `supermercado` foi de
-  R$ 614 para R$ 1.197 — R$ 584 acima do normal — e o cartão não disse nada, porque supermercado
-  oscila o bastante para isso ficar a 2,4 desvios. Está do lado certo da régua e ainda assim é
-  dinheiro que você ia querer ver. Qualquer limiar tem essa borda; este a tem em R$ 584.
+- **O corte é uma linha, e perto dela ainda sobra dinheiro.** Depois de descer para 2,25, o maior
+  gasto silenciado que ainda tem algum sinal é `restaurante` a +R$ 490 num mês (z=1,94) e `Amazon` a
+  +R$ 450 (z=2,07). Qualquer limiar tem essa borda — descer até pegá-los traria `outros` e oscilação
+  de restaurante todo mês.
+- **Categoria que fica errática deixa de acender.** `Mercado Livre` acendeu a z=25,3 em out/25 e a
+  z=8,9 em nov/25; em jun/26, com +R$ 1.392, chegou só a z=2,44. Os próprios picos alargaram o
+  "normal" dela — a mediana e o desvio absoluto se adaptam, e essa é a intenção, mas o efeito é que
+  quem gasta de forma cada vez mais irregular vira difícil de alertar.
 
 ---
 
