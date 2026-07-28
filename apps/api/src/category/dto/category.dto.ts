@@ -27,6 +27,22 @@ export class RenameCategoryDto {
   name: string;
 }
 
+export class ConsolidateDto {
+  @ApiProperty({
+    description: 'O trecho que passa a valer, como veio de `GET /category-rule/consolidation`',
+    example: 'shopee express ',
+  })
+  @IsString()
+  @IsNotEmpty()
+  value: string;
+
+  @ApiProperty({ description: 'A categoria de destino', example: 'Shopee' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(40)
+  category: string;
+}
+
 export class CreateRuleDto {
   @ApiProperty({
     description:

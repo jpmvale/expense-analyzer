@@ -3,6 +3,7 @@ import {
   normalize,
   PAYMENT_CATEGORY,
   reapplyRules,
+  ruleForTitle,
   type ReapplyResult,
 } from '@expense/categorization';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
@@ -11,13 +12,48 @@ import { Model } from 'mongoose';
 import { Category, CategoryDocument } from '../schemas/category.schema';
 import { CategoryRule, CategoryRuleDocument } from '../schemas/category-rule.schema';
 import { Purchase, PurchaseDocument } from '../schemas/purchase.schema';
-import { CreateCategoryDto, CreateRuleDto, RenameCategoryDto } from './dto/category.dto';
+import {
+  ConsolidateDto,
+  CreateCategoryDto,
+  CreateRuleDto,
+  RenameCategoryDto,
+} from './dto/category.dto';
 import { createPurchaseStore } from './purchase-store';
+import {
+  suggestConsolidations,
+  type ConsolidationSuggestion,
+  type RuledTitle,
+} from './rule-consolidation';
 
 export interface CategorySummary {
   name: string;
   /** Quantas compras estão nela hoje. Zero é categoria criada e ainda não usada. */
   purchaseCount: number;
+}
+
+/** Uma regra com o tamanho do que ela governa hoje. */
+export interface RuleUsage {
+  _id: string;
+  kind: 'exact' | 'contains';
+  value: string;
+  category: string;
+  updatedAt: Date;
+  /**
+   * Compras que obedecem a esta regra agora — não as que ela *casa*.
+   *
+   * A diferença importa: uma `contains` casa com um título que tem regra
+   * `exact` própria, e não manda nele. Contar por casamento diria que duas
+   * regras governam a mesma compra, e apagar uma delas devolveria um número
+   * diferente do prometido.
+   */
+  purchases: number;
+  /** Títulos distintos sob esta regra. Uma regra `exact` governa no máximo um. */
+  titles: number;
+}
+
+/** Um título distinto da base, com a categoria e o volume que ele carrega. */
+interface TitleRow extends RuledTitle {
+  purchases: number;
 }
 
 @Injectable()
@@ -145,6 +181,78 @@ export class CategoryService {
   }
 
   /**
+   * Os títulos distintos da base, com a categoria e o volume de cada um.
+   *
+   * A categoria vem do par (título, categoria) mais numeroso, e não de um
+   * `$first`: a ordem dentro de um grupo do Mongo não é definida, e um título
+   * que apareça em duas categorias devolveria uma ou outra conforme o dia.
+   */
+  private async titleRows(): Promise<TitleRow[]> {
+    const rows = await this.purchaseModel
+      .aggregate<{ _id: string; category: string; purchases: number }>([
+        { $match: { sourceCategory: { $ne: PAYMENT_CATEGORY } } },
+        { $group: { _id: { title: '$title', category: '$category' }, n: { $sum: 1 } } },
+        { $sort: { n: -1 } },
+        {
+          $group: {
+            _id: '$_id.title',
+            category: { $first: '$_id.category' },
+            purchases: { $sum: '$n' },
+          },
+        },
+      ])
+      .exec();
+
+    return rows.map(({ _id, category, purchases }) => ({ title: _id, category, purchases }));
+  }
+
+  /**
+   * As regras com quantas compras cada uma governa.
+   *
+   * Sem esse número a lista de 255 regras é ilegível: não dá para saber qual
+   * carrega a base e qual sobrou de uma classificação isolada de 2019, nem o
+   * que se perde ao apagar uma.
+   */
+  async listRuleUsage(): Promise<RuleUsage[]> {
+    const [rules, titles] = await Promise.all([this.listRules(), this.titleRows()]);
+
+    const byRule = new Map<string, { purchases: number; titles: number }>();
+    for (const { title, purchases } of titles) {
+      const winner = ruleForTitle(title, rules);
+      if (!winner) continue;
+      const id = String(winner._id);
+      const tally = byRule.get(id) ?? { purchases: 0, titles: 0 };
+      tally.purchases += purchases;
+      tally.titles += 1;
+      byRule.set(id, tally);
+    }
+
+    return rules.map((rule) => {
+      const tally = byRule.get(String(rule._id)) ?? { purchases: 0, titles: 0 };
+      return {
+        _id: String(rule._id),
+        kind: rule.kind,
+        value: rule.value,
+        category: rule.category,
+        updatedAt: rule.updatedAt,
+        ...tally,
+      };
+    });
+  }
+
+  /**
+   * Onde um punhado de regras `exact` poderia virar uma `contains`.
+   *
+   * Devolve também as bloqueadas, com o que elas levariam junto — nesta base é
+   * a informação mais útil da análise, porque as maiores alavancas são
+   * justamente as que têm conflito.
+   */
+  async listConsolidations(): Promise<Array<ConsolidationSuggestion<CategoryRuleDocument>>> {
+    const [rules, titles] = await Promise.all([this.listRules(), this.titleRows()]);
+    return suggestConsolidations(rules, titles);
+  }
+
+  /**
    * Cria ou atualiza a regra e reescreve a base na sequência.
    *
    * Reclassificar o mesmo título edita a regra que existe em vez de empilhar uma
@@ -180,6 +288,52 @@ export class CategoryService {
     }
 
     return { rule, ...(await this.reapply()) };
+  }
+
+  /**
+   * Troca as regras `exact` cobertas pelo trecho por uma `contains` só.
+   *
+   * Existe como operação própria por causa do custo: fazer isso pela API de
+   * regras seria um `POST` e cinquenta `DELETE`, e **cada um reaplica a base
+   * inteira**. Cinquenta e uma varreduras para uma mudança que é uma.
+   *
+   * Quem decide o que morre é o servidor, não o cliente: a lista de substituídas
+   * é recalculada aqui a partir do trecho. Uma tela desatualizada — a sugestão
+   * foi carregada, o usuário classificou outra coisa em outra aba — apagaria a
+   * regra errada se mandasse ids.
+   *
+   * A recusa por conflito **não** é repetida aqui de propósito. Consolidar é uma
+   * decisão informada: a tela mostra o que o trecho levaria junto, e quem manda
+   * aplicar mesmo assim está dizendo que aquilo é o que quer. O que não se pode
+   * é fazer isso em silêncio.
+   */
+  async consolidate({
+    value,
+    category,
+  }: ConsolidateDto): Promise<{ created: number; deleted: number } & ReapplyResult> {
+    const trecho = value.trim();
+    if (trecho === '') throw new ConflictException('O trecho não pode ser vazio.');
+    if (isReservedCategory(category)) {
+      throw new ConflictException(`"${category}" é o pagamento da fatura, não uma categoria.`);
+    }
+
+    const covered = (await this.ruleModel.find({ kind: 'exact', category }).exec()).filter((rule) =>
+      normalize(rule.value).includes(normalize(trecho)),
+    );
+
+    await this.ruleModel
+      .updateOne(
+        { kind: 'contains', value: trecho },
+        { $set: { kind: 'contains', value: trecho, category } },
+        { upsert: true },
+      )
+      .exec();
+
+    if (covered.length > 0) {
+      await this.ruleModel.deleteMany({ _id: { $in: covered.map((rule) => rule._id) } }).exec();
+    }
+
+    return { created: 1, deleted: covered.length, ...(await this.reapply()) };
   }
 
   async deleteRule(id: string): Promise<ReapplyResult> {

@@ -271,4 +271,130 @@ describe('CategoryService', () => {
       assert.deepEqual(segunda, { classified: 0, restored: 0, financing: 0 });
     });
   });
+
+  describe('listRuleUsage', () => {
+    it('conta as compras que cada regra governa', async () => {
+      await db.purchases.create([
+        purchase('Shopee *Alfa', 'outros'),
+        purchase('Shopee *Alfa', 'outros'),
+        purchase('Shopee *Beta', 'outros'),
+      ]);
+      await service.upsertRule({ kind: 'contains', value: 'shopee', category: 'Shopee' });
+
+      const [uso] = await service.listRuleUsage();
+
+      assert.equal(uso.value, 'shopee');
+      assert.equal(uso.purchases, 3);
+      assert.equal(uso.titles, 2);
+    });
+
+    // Contar por casamento diria que as duas governam a mesma compra, e apagar
+    // a `contains` prometeria devolver algo que ela não manda.
+    it('dá a compra a quem de fato manda nela, não a quem casa', async () => {
+      await db.purchases.create([
+        purchase('Shopee *Alfa', 'outros'),
+        purchase('Shopee *Beta', 'outros'),
+      ]);
+      await service.upsertRule({ kind: 'contains', value: 'shopee', category: 'Shopee' });
+      await service.upsertRule({ kind: 'exact', value: 'Shopee *Alfa', category: 'saúde' });
+
+      const uso = await service.listRuleUsage();
+      const trecho = uso.find((u) => u.kind === 'contains');
+      const exata = uso.find((u) => u.kind === 'exact');
+
+      assert.equal(exata?.purchases, 1);
+      assert.equal(trecho?.purchases, 1);
+    });
+
+    it('mostra zero na regra que não alcança nada hoje', async () => {
+      await db.purchases.create([purchase('Uber', 'transporte')]);
+      await service.upsertRule({ kind: 'exact', value: 'Loja fechada', category: 'casa' });
+
+      const [uso] = await service.listRuleUsage();
+      assert.equal(uso.purchases, 0);
+    });
+  });
+
+  describe('listConsolidations', () => {
+    it('propõe o trecho que substitui as regras exact de um mesmo lugar', async () => {
+      for (const sufixo of ['Alfa', 'Beta', 'Gama']) {
+        await db.purchases.create([purchase(`Shopee *${sufixo}`, 'outros')]);
+        await service.upsertRule({
+          kind: 'exact',
+          value: `Shopee *${sufixo}`,
+          category: 'Shopee',
+        });
+      }
+
+      const [sugestao] = await service.listConsolidations();
+
+      assert.equal(sugestao.category, 'Shopee');
+      assert.equal(sugestao.replaces.length, 3);
+      assert.deepEqual(sugestao.conflicts, []);
+    });
+
+    // O caso que a base real trouxe: a Shopee é marketplace, e parte das compras
+    // está classificada pelo que foi comprado. A sugestão precisa aparecer com o
+    // preço dela, não desaparecer.
+    it('devolve a bloqueada dizendo o que ela levaria junto', async () => {
+      for (const sufixo of ['Alfa', 'Beta', 'Gama']) {
+        await db.purchases.create([purchase(`Shopee *${sufixo}`, 'outros')]);
+        await service.upsertRule({
+          kind: 'exact',
+          value: `Shopee *${sufixo}`,
+          category: 'Shopee',
+        });
+      }
+      // Classificada pela ingestão, sem regra própria: seria capturada.
+      await db.purchases.create([purchase('Shopee *Drogaria', 'saúde')]);
+
+      const bloqueada = (await service.listConsolidations()).find((s) => s.conflicts.length > 0);
+
+      assert.ok(bloqueada);
+      assert.deepEqual(bloqueada.conflicts, [{ title: 'Shopee *Drogaria', category: 'saúde' }]);
+    });
+  });
+
+  describe('consolidate', () => {
+    async function comTresRegras() {
+      for (const sufixo of ['Alfa', 'Beta', 'Gama']) {
+        await db.purchases.create([purchase(`Shopee *${sufixo}`, 'outros')]);
+        await service.upsertRule({ kind: 'exact', value: `Shopee *${sufixo}`, category: 'Shopee' });
+      }
+    }
+
+    it('troca as exact cobertas por uma contains, sem mudar a categoria de ninguém', async () => {
+      await comTresRegras();
+
+      const resultado = await service.consolidate({ value: 'shopee *', category: 'Shopee' });
+
+      assert.equal(resultado.deleted, 3);
+      const regras = await service.listRules();
+      assert.equal(regras.length, 1);
+      assert.equal(regras[0].kind, 'contains');
+
+      const compras = await db.purchases.find().exec();
+      assert.ok(compras.every((c) => c.category === 'Shopee'));
+    });
+
+    // A tela pode estar desatualizada; quem decide o que morre é o servidor, a
+    // partir do trecho — nunca uma lista de ids vinda do cliente.
+    it('não toca em regra de outra categoria nem no que o trecho não cobre', async () => {
+      await comTresRegras();
+      await service.upsertRule({ kind: 'exact', value: 'Shopee *Drogaria', category: 'saúde' });
+      await service.upsertRule({ kind: 'exact', value: 'Uber', category: 'transporte' });
+
+      await service.consolidate({ value: 'shopee *', category: 'Shopee' });
+
+      const sobraram = (await service.listRules()).map((r) => r.value).sort();
+      assert.deepEqual(sobraram, ['Shopee *Drogaria', 'Uber', 'shopee *']);
+    });
+
+    it('recusa trecho vazio', async () => {
+      assert.match(
+        await recusa(service.consolidate({ value: '   ', category: 'Shopee' })),
+        /vazio/,
+      );
+    });
+  });
 });

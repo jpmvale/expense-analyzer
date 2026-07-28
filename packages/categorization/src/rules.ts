@@ -58,7 +58,7 @@ export function ruleMatches(rule: CategoryRule, title: string): boolean {
  * 3. No empate, a mais recente. Se o usuário reclassificou algo hoje, é porque
  *    a classificação de antes não servia mais.
  */
-export function sortRulesByPrecedence(rules: CategoryRule[]): CategoryRule[] {
+export function sortRulesByPrecedence<T extends CategoryRule>(rules: T[]): T[] {
   const kindRank = (kind: RuleKind) => (kind === 'exact' ? 1 : 0);
   const at = (rule: CategoryRule) => rule.updatedAt?.getTime() ?? 0;
 
@@ -70,13 +70,29 @@ export function sortRulesByPrecedence(rules: CategoryRule[]): CategoryRule[] {
   );
 }
 
+/**
+ * A regra que ganha este título, ou `null` se nenhuma o alcança.
+ *
+ * É genérica de propósito: quem chama passa o documento do banco e recebe **o
+ * mesmo documento** de volta, com `_id` e tudo. Sem isso não daria para dizer
+ * quantas compras cada regra governa, que é a diferença entre listar 255 regras
+ * e conseguir revisá-las.
+ *
+ * "Ganha" é a última da ordem de precedência que casa — a mesma definição que a
+ * reaplicação usa para gravar. Ter as duas coisas saindo daqui é o que impede a
+ * tela de dizer que uma regra manda em compras que, no banco, obedecem a outra.
+ */
+export function ruleForTitle<T extends CategoryRule>(title: string, rules: T[]): T | null {
+  let winner: T | null = null;
+  for (const rule of sortRulesByPrecedence(rules)) {
+    if (ruleMatches(rule, title)) winner = rule;
+  }
+  return winner;
+}
+
 /** A categoria que as regras dão a este título, ou `null` se nenhuma o alcança. */
 export function categoryFromRules(title: string, rules: CategoryRule[]): string | null {
-  let category: string | null = null;
-  for (const rule of sortRulesByPrecedence(rules)) {
-    if (ruleMatches(rule, title)) category = rule.category;
-  }
-  return category;
+  return ruleForTitle(title, rules)?.category ?? null;
 }
 
 export interface TitleAssignment {

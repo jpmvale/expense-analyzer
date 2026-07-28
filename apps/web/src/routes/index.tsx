@@ -5,6 +5,7 @@ import {
   DashboardPage,
   PurchasesPage,
   RecurringPage,
+  RulesPage,
   UncategorizedPage,
 } from '../pages/lazy';
 
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
       { path: '/bills', element: <BillsPage /> },
       { path: '/recurring', element: <RecurringPage /> },
       { path: '/uncategorized', element: <UncategorizedPage /> },
+      { path: '/rules', element: <RulesPage /> },
     ],
   },
 ]);

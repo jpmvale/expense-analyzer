@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { assignTitles, categoryFromRules, ruleMatches, type CategoryRule } from './rules';
+import {
+  assignTitles,
+  categoryFromRules,
+  ruleForTitle,
+  ruleMatches,
+  type CategoryRule,
+} from './rules';
 
 function rule(
   kind: CategoryRule['kind'],
@@ -91,6 +97,37 @@ describe('categoryFromRules', () => {
       categoryFromRules('Mercadolivre*Mercadol', rules),
       categoryFromRules('Mercadolivre*Mercadol', invertido),
     );
+  });
+});
+
+describe('ruleForTitle', () => {
+  it('devolve a própria regra que ganhou, não só a categoria', () => {
+    const exata = rule('exact', 'Mercadolivre*Mercadol', 'eletrônicos');
+    const trecho = rule('contains', 'mercadolivre', 'mercado livre');
+
+    assert.equal(ruleForTitle('Mercadolivre*Mercadol', [trecho, exata]), exata);
+    assert.equal(ruleForTitle('Mercadolivre*Mercadoli', [trecho, exata]), trecho);
+    assert.equal(ruleForTitle('PADARIA', [trecho, exata]), null);
+  });
+
+  // A tela conta compras por regra a partir daqui; se divergisse da escada que
+  // grava, ela diria que uma regra manda em compras que obedecem a outra.
+  it('concorda com `categoryFromRules` em quem ganha', () => {
+    const rules = [
+      rule('contains', 'mercado', 'supermercado'),
+      rule('contains', 'mercadolivre', 'mercado livre'),
+      rule('exact', 'Mercadolivre*Mercadol', 'eletrônicos'),
+    ];
+
+    for (const title of ['Mercadolivre*Mercadol', 'MERCADO SAO JOAO', 'IFOOD']) {
+      assert.equal(ruleForTitle(title, rules)?.category ?? null, categoryFromRules(title, rules));
+    }
+  });
+
+  // Genérica: quem passa o documento do banco recebe o documento de volta.
+  it('preserva os campos extras de quem chamou', () => {
+    const comId = { ...rule('exact', 'IFOOD', 'restaurante'), _id: 'abc123' };
+    assert.equal(ruleForTitle('IFOOD', [comId])?._id, 'abc123');
   });
 });
 

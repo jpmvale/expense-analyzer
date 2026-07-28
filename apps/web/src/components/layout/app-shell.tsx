@@ -1,6 +1,7 @@
 import {
   FileTextIcon,
   LayoutDashboardIcon,
+  ListChecksIcon,
   MenuIcon,
   ReceiptTextIcon,
   RepeatIcon,
@@ -20,6 +21,7 @@ const NAV = [
   { to: '/bills', label: 'Faturas', Icon: FileTextIcon },
   { to: '/recurring', label: 'Assinaturas', Icon: RepeatIcon },
   { to: '/uncategorized', label: 'Sem categoria', Icon: TagsIcon },
+  { to: '/rules', label: 'Regras', Icon: ListChecksIcon },
 ];
 
 function Wordmark() {

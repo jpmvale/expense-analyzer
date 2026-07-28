@@ -12,16 +12,17 @@
 
 ## Estado atual
 
-`main` em `495c69a`, CI verde, árvore limpa.
+CI verde, árvore limpa.
 
 | | |
 | --- | --- |
 | **Base de referência** | 95 faturas · 5.744 lançamentos · `2018-11` a `2026-09` · R$ 217.774,05 |
-| **Testes** | 245 — api 147, extractor 35, categorization 32, web 31 |
+| **Testes** | 267 — api 166, extractor 35, categorization 35, web 31 |
 | **Workspaces** | `apps/{api,web,extractor}` + `packages/categorization` |
-| **Telas** | Visão geral · Compras · Faturas · Assinaturas · Sem categoria |
+| **Telas** | Visão geral · Compras · Faturas · Assinaturas · Sem categoria · Regras |
 | **Fila de classificação** | 113 títulos em `outros` |
-| **Assinaturas detectadas** | 17 |
+| **Assinaturas detectadas** | 17, 11 com nome formal |
+| **Regras** | 255 — 227 `exact`, 28 `contains`; nenhuma sem alcance |
 
 Subir o ambiente:
 
@@ -29,6 +30,30 @@ Subir o ambiente:
 docker compose up -d   # MongoDB
 pnpm dev               # API + front
 ```
+
+---
+
+## ✅ FEITO (2026-07-28) — tela de Regras, com consolidação
+
+As 255 regras não tinham superfície nenhuma. A tela lista, filtra por categoria e por trecho, mostra
+quantas compras cada regra **governa** — não quantas ela casa, que é diferente e maior — e apaga.
+
+O que ela tem de próprio é o painel de consolidação: onde um punhado de regras `exact` viraria uma
+`contains`. `POST /category-rule/consolidate` faz a troca com **uma** reaplicação; pela API de regras
+seriam um `POST` e cinquenta `DELETE`, cada um varrendo a base.
+
+**A descoberta que mudou o desenho.** Eu tinha proposto a tela dizendo que `contains "shopee"`
+substituiria ~52 regras. Contei regras por categoria sem checar o que o trecho mais alcançaria: dos
+86 títulos com "shopee", **22 estão deliberadamente em outras categorias** — `vestuário`, `saúde`,
+`eletrônicos`, `estorno`, `supermercado` —, porque a Shopee é marketplace e a classificação segue o
+que foi comprado. Nenhum dos 22 tem regra própria, então a `contains` os engoliria em silêncio.
+
+Por isso a sugestão bloqueada é devolvida junto da segura, com o que ela levaria junto. O critério e
+os três casos em que ele falha estão em [README](README.md#onde-dá-para-juntar-regras).
+
+Verificado na tela contra uma cópia da base: consolidar Amazon trocou 6 regras por 1 com **0 compras
+reclassificadas**, e a distribuição por categoria ficou idêntica à do banco real, categoria por
+categoria. Apagar uma regra devolveu 1 compra à categoria da fatura.
 
 ---
 
@@ -120,9 +145,17 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
 **Produto**
 
 - **A detecção de assinatura é uma tela, não um aviso.** O degrau de preço está lá, mas é
-  preciso ir olhar — não há alerta quando um reajuste aparece numa fatura nova.
-- **Não há tela para listar e revisar regras.** `GET /category-rule` mostra; a interface não.
-  Editar uma regra hoje é criar por cima ou apagar.
+  preciso ir olhar — não há alerta quando um reajuste aparece numa fatura nova. Medido em
+  2026-07-28: das 6 ativas, **uma** teve degrau nos últimos 6 meses (Barbearia, +8,8% há 3 meses).
+  O alerta é bom desenho e hoje renderia um cartão só — o que é saudável para um alerta e fraco
+  para justificar a construção agora.
+- **A tela de Regras lista e apaga, mas não edita.** Mudar o destino de uma regra é criá-la de novo
+  apontando para a categoria certa, e não dá para digitar um trecho à mão — ele sai do agrupamento,
+  do título clicado ou de uma sugestão.
+- **A consolidação não enxerga sufixo comum, só prefixo.** `Ebanx*Spotify` e `Dm *Spotify` não geram
+  candidato, ainda que "spotify" seja o que os une. E conflito é binário: cobrir 50 regras
+  conflitando com 1 é tão bloqueado quanto conflitar com 22, embora o primeiro se resolvesse
+  criando uma `exact` para a exceção.
 - **Não há tela para o reapply.** Existe o `pnpm reapply`, mas quem só usa a interface não
   tem como chamá-lo.
 - **113 títulos ainda em `outros`.** A fila encolhe classificando pela tela de Sem categoria;

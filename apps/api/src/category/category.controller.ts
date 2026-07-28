@@ -1,7 +1,12 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CategoryService } from './category.service';
-import { CreateCategoryDto, CreateRuleDto, RenameCategoryDto } from './dto/category.dto';
+import {
+  ConsolidateDto,
+  CreateCategoryDto,
+  CreateRuleDto,
+  RenameCategoryDto,
+} from './dto/category.dto';
 
 @ApiTags('category')
 @Controller('category')
@@ -44,9 +49,21 @@ export class CategoryRuleController {
   constructor(private readonly categoryService: CategoryService) {}
 
   @Get()
-  @ApiOperation({ summary: 'As regras de classificação criadas pelo usuário' })
+  @ApiOperation({
+    summary: 'As regras do usuário, cada uma com quantas compras e títulos ela governa hoje',
+  })
   listRules() {
-    return this.categoryService.listRules();
+    return this.categoryService.listRuleUsage();
+  }
+
+  @Get('consolidation')
+  @ApiOperation({
+    summary:
+      'Onde um punhado de regras `exact` viraria uma `contains` — incluindo as bloqueadas, ' +
+      'com o que elas levariam junto',
+  })
+  listConsolidations() {
+    return this.categoryService.listConsolidations();
   }
 
   @Post()
@@ -55,6 +72,14 @@ export class CategoryRuleController {
   })
   upsertRule(@Body() dto: CreateRuleDto) {
     return this.categoryService.upsertRule(dto);
+  }
+
+  @Post('consolidate')
+  @ApiOperation({
+    summary: 'Troca as regras `exact` cobertas pelo trecho por uma `contains`, reaplicando uma vez',
+  })
+  consolidate(@Body() dto: ConsolidateDto) {
+    return this.categoryService.consolidate(dto);
   }
 
   @Post('reapply')

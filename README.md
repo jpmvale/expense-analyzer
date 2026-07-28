@@ -34,6 +34,7 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês, com o fundo da célula proporcional ao peso. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. Meses com juros ou multa vêm marcados, e o valor aparece à parte do gasto. |
 | **Encargo ≠ gasto** | Juros, multa e saldo rolado saem do total gasto e ganham linha própria. Somá-los respondia "quanto você gastou" com dinheiro que ninguém gastou — [detalhes abaixo](#gasto-e-encargo-não-são-a-mesma-coisa). |
 | **Assinaturas** | Detecta as cobranças que se repetem todo mês com preço estável e mostra a **escada de preços** de cada uma: quando mudou, de quanto para quanto. É o que o app do banco não faz, porque depende de anos de série contínua — [como funciona](#como-uma-assinatura-é-detectada). Cada uma abre num painel com o **gráfico da evolução do preço**, e você pode dar a ela um **nome formal** — `Mp *Melimais` vira `Meli+` — que sobrevive à troca de gateway. |
+| **Regras** | Lista todas as decisões de classificação que você tomou, com quantas compras cada uma **governa** de fato. E aponta onde um punhado de regras de título exato viraria uma só por trecho — dizendo, quando for o caso, o que essa troca levaria junto — [critério](#onde-dá-para-juntar-regras). |
 | **API** | REST documentada em OpenAPI/Swagger, com validação dos filtros. |
 
 > **Sobre "outros".** Em julho de 2024 o emissor parou de classificar e passou a carimbar `outros`
@@ -581,8 +582,10 @@ requisição e devolve quantas compras mudaram.
 | `POST /category` | Cria uma categoria antes de qualquer compra usá-la |
 | `PATCH /category/:name` | Renomeia. Apontar para uma categoria que já existe **mescla** as duas |
 | `DELETE /category/:name` | Apaga, se não estiver em uso. Para esvaziar uma categoria, mescle-a em outra |
-| `GET /category-rule` | As suas regras |
+| `GET /category-rule` | As suas regras, cada uma com quantas compras e títulos ela **governa** hoje |
+| `GET /category-rule/consolidation` | Onde um punhado de regras `exact` viraria uma `contains` — [critério abaixo](#onde-dá-para-juntar-regras) |
 | `POST /category-rule` | Cria ou atualiza a regra. Reclassificar o mesmo título edita a que já existe, nunca empilha uma segunda |
+| `POST /category-rule/consolidate` | Troca as `exact` cobertas pelo trecho por uma `contains`, reaplicando **uma vez** |
 | `DELETE /category-rule/:id` | Apaga a regra e devolve as compras dela à `sourceCategory` |
 | `POST /category-rule/reapply` | Reclassifica a base com as regras e a lista de encargos de agora, sem reextrair. É o gatilho para uma mudança na lista de palavras-chave de encargo valer no que já está no banco |
 
@@ -597,6 +600,41 @@ não haver mais regra; `financing`, as que a camada de encargo reescreveu — pa
 de `encargos`. Esta última vem separada porque muda o total gasto do mês, e não só como ele se
 reparte. Os três contam **compras**, não títulos, e a operação é idempotente: chamar duas vezes
 seguidas devolve zeros na segunda.
+
+### Onde dá para juntar regras
+
+A tela de **Regras** propõe trocar um punhado de regras `exact` por uma `contains`. O gatilho é
+concreto: nesta base, `Shopee` acumulou 57 regras apontando para títulos que só diferem no sufixo
+(`Shopee *Inpower`, `Shopee *Sieno`). Cada compra nova com sufixo novo volta para a fila de
+classificação, e classificá-la cria a 58ª regra — o trabalho é infinito por construção.
+
+O candidato é um **prefixo cortado em fronteira** (`shopee`, `shopee `, `shopee *`, nunca `shope`),
+com no mínimo 4 caracteres, e só é proposto se cobrir ao menos 3 regras. Entre dois que cobrem o
+mesmo tanto, vence o mais longo — o mais específico é o que menos promete alcançar o que ninguém
+previu.
+
+**O que o critério recusa é o mais útil que ele produz.** Um candidato é marcado como *bloqueado* se
+tomaria um título que hoje está numa categoria de verdade. Só `outros` pode ser capturado, porque
+ali não há classificação a desrespeitar — e capturar dali é o ganho, não o risco. Títulos protegidos
+pela própria regra `exact` não contam como conflito: `exact` continua ganhando de `contains` depois
+da troca.
+
+Na base de referência isso muda a resposta. `contains "shopee"` cobriria 50 regras **e levaria junto
+22 títulos** que estão em `vestuário`, `saúde`, `eletrônicos`, `estorno` e `supermercado` — porque a
+Shopee é um marketplace, e ali a classificação segue o que foi comprado, não onde. Nenhum dos 22 tem
+regra própria; suas categorias vieram da ingestão. A sugestão aparece assim mesmo, com o preço à
+vista, porque silenciá-la esconderia a maior alavanca da base e aplicá-la destruiria classificação
+deliberada.
+
+#### Onde este critério falha
+
+- **Não enxerga sufixo comum, só prefixo.** `Ebanx*Spotify` e `Dm *Spotify` não geram candidato,
+  ainda que "spotify" seja o que os une.
+- **Conflito é binário.** Um candidato que cobre 50 regras e conflita com 1 é tão bloqueado quanto o
+  que conflita com 22 — e o primeiro seria resolvido criando uma `exact` para a exceção.
+- **Bloqueio é aviso, não trava.** `POST /category-rule/consolidate` aplica o que mandarem; a recusa
+  mora na tela, que não oferece o botão. Consolidar é uma decisão informada, e o que não se pode é
+  fazê-la em silêncio.
 
 ### `GET /health`
 
@@ -717,9 +755,10 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
 - **Não há autenticação, e a API agora escreve.** Até então ela era só leitura; as rotas de
   categoria e de regra mudam o banco sem pedir nada a ninguém. Suba num ambiente confiável, não na
   internet pública.
-- **Regras se editam criando por cima, ou apagando.** Não há tela para listar e revisar o que já
-  foi criado — `GET /category-rule` mostra, mas a interface ainda não. Também não dá para ajustar o
-  trecho de uma regra `contains` na tela: ela sai do agrupamento da API ou do título clicado.
+- **Regras se editam criando por cima, ou apagando.** A tela de Regras lista, filtra, mostra quantas
+  compras cada uma governa e apaga — mas não edita: para mudar o destino de uma regra, crie-a de novo
+  apontando para a categoria certa. Também não dá para digitar um trecho à mão; ele sai do
+  agrupamento da API, do título clicado ou de uma sugestão de consolidação.
 - **A lista de encargo se corrige sem reextrair; as outras palavras-chave, não.** `POST
   /category-rule/reapply` aplica a lista de encargo de agora ao que já está no banco, nos dois
   sentidos — [como](#gasto-e-encargo-não-são-a-mesma-coisa). Já as palavras-chave que apenas repartem

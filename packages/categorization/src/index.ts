@@ -16,6 +16,7 @@ export {
 export {
   assignTitles,
   categoryFromRules,
+  ruleForTitle,
   ruleMatches,
   sortRulesByPrecedence,
   type CategoryRule,

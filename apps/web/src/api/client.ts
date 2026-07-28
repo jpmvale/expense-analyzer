@@ -7,6 +7,7 @@ import type {
   UncategorizedTitle,
 } from '../interface/category';
 import type ListPurchase from '../interface/listPurchase';
+import type { ConsolidationSuggestion, RuleUsage } from '../interface/rule';
 import type { RecurringCharge } from '../interface/recurring';
 
 /**
@@ -135,8 +136,24 @@ export function createCategory(name: string): Promise<Category> {
   return sendJson<Category>('POST', '/category', { name });
 }
 
-export function listRules(): Promise<CategoryRule[]> {
-  return getJson<CategoryRule[]>('/category-rule');
+export function listRules(): Promise<RuleUsage[]> {
+  return getJson<RuleUsage[]>('/category-rule');
+}
+
+export function listConsolidations(): Promise<ConsolidationSuggestion[]> {
+  return getJson<ConsolidationSuggestion[]>('/category-rule/consolidation');
+}
+
+/**
+ * Aplica a consolidação: o trecho entra, as `exact` que ele cobre saem, e a base
+ * é reaplicada **uma vez**. Fazer isso pela API de regras seria um `POST` e
+ * cinquenta `DELETE`, cada um varrendo a base inteira.
+ */
+export function consolidateRules(suggestion: {
+  value: string;
+  category: string;
+}): Promise<{ created: number; deleted: number } & ReapplyResult> {
+  return sendJson('POST', '/category-rule/consolidate', suggestion);
 }
 
 /**
