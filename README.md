@@ -8,6 +8,9 @@ mês a mês.
 O parser não é acoplado a nenhum emissor — lê qualquer CSV com as colunas `date,title,amount`.
 Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 
+> Para retomar de onde a última sessão parou — estado, pendências e as armadilhas de ambiente que
+> já custaram tempo aqui —, leia [`HANDOFF.md`](HANDOFF.md).
+
 ```
   faturas .csv                  MongoDB                  API (Nest)              Front (React)
  ┌──────────────┐            ┌───────────┐            ┌─────────────┐         ┌───────────────┐
