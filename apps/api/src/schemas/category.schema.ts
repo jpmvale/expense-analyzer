@@ -14,7 +14,10 @@ export type CategoryDocument = HydratedDocument<Category>;
  */
 @Schema({ collection: 'categories', timestamps: { createdAt: true, updatedAt: false } })
 export class Category {
-  @Prop({ required: true, unique: true })
+  // `type` explícito em vez de inferido: o `emitDecoratorMetadata` só existe sob
+  // o compilador do TypeScript, e os testes rodam sob esbuild, que não o emite.
+  // Dizer o tipo aqui produz o mesmo schema e o torna independente do flag.
+  @Prop({ type: String, required: true, unique: true })
   name: string;
 }
 

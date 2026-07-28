@@ -1,4 +1,7 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  // `src/testing` fica de fora junto com os testes: ele importa
+  // `mongodb-memory-server`, que é devDependency, e compilá-lo faria o `dist` de
+  // produção referenciar um pacote que não é instalado lá.
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "src/testing"]
 }

@@ -5,20 +5,24 @@ export type PurchaseDocument = HydratedDocument<Purchase>;
 
 @Schema({ collection: 'purchases' })
 export class Purchase {
-  @Prop({ required: true })
+  // `type` explícito em vez de inferido, em todos os campos: o
+  // `emitDecoratorMetadata` só existe sob o compilador do TypeScript, e os testes
+  // rodam sob esbuild, que não o emite. Dizer o tipo produz o mesmo schema e o
+  // torna independente do flag.
+  @Prop({ type: String, required: true })
   title: string;
 
-  @Prop({ required: true })
+  @Prop({ type: Number, required: true })
   amount: number;
 
-  @Prop({ required: true, index: true })
+  @Prop({ type: Date, required: true, index: true })
   date: Date;
 
   /**
    * A categoria que vale: a da ingestão, ou a que uma regra do usuário
    * sobrescreveu. É por ela que tudo filtra e agrega.
    */
-  @Prop({ required: true, index: true })
+  @Prop({ type: String, required: true, index: true })
   category: string;
 
   /**
@@ -31,11 +35,11 @@ export class Purchase {
    * Opcional no schema por causa das compras gravadas antes do campo existir; o
    * backfill do extractor as preenche na primeira execução.
    */
-  @Prop({ index: true })
+  @Prop({ type: String, index: true })
   sourceCategory: string;
 
   /** Primeiro dia (em UTC) do mês da fatura em que a compra apareceu. */
-  @Prop({ required: true, index: true })
+  @Prop({ type: Date, required: true, index: true })
   referenceMonth: Date;
 }
 

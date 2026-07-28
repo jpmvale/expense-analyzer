@@ -21,10 +21,13 @@ export type SubscriptionDocument = HydratedDocument<Subscription>;
  */
 @Schema({ collection: 'subscriptions', timestamps: true })
 export class Subscription {
-  @Prop({ required: true, unique: true })
+  // `type` explícito em vez de inferido: o `emitDecoratorMetadata` só existe sob
+  // o compilador do TypeScript, e os testes rodam sob esbuild, que não o emite.
+  // Dizer o tipo produz o mesmo schema e o torna independente do flag.
+  @Prop({ type: String, required: true, unique: true })
   key: string;
 
-  @Prop({ required: true })
+  @Prop({ type: String, required: true })
   name: string;
 }
 

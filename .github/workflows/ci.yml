@@ -14,6 +14,14 @@ jobs:
   verify:
     name: lint + typecheck + test + build
     runs-on: ubuntu-latest
+
+    env:
+      # Explícito em vez de deixar a biblioteca escolher: o padrão dela depende
+      # de o home ser gravável e cai em `node_modules` quando não é. O cache
+      # abaixo aponta para este mesmo caminho, e um cache que erra o diretório em
+      # silêncio é pior que nenhum, porque parece estar funcionando.
+      MONGOMS_DOWNLOAD_DIR: ${{ github.workspace }}/.cache/mongodb-binaries
+
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v6
@@ -21,6 +29,15 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # Os testes de service sobem um MongoDB de verdade em memória, e o binário
+      # do mongod é baixado na primeira execução. Sem cache seriam ~77 MB em toda
+      # corrida; a chave é o sistema operacional porque o binário é dele.
+      - name: cache do binário do mongod
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}
+
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck

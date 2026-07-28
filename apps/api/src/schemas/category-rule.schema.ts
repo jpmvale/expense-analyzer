@@ -16,14 +16,22 @@ export type CategoryRuleDocument = HydratedDocument<CategoryRule>;
  */
 @Schema({ collection: 'categoryRules', timestamps: true })
 export class CategoryRule {
-  /** `exact` casa o título inteiro; `contains`, um trecho dele. */
-  @Prop({ required: true, enum: ['exact', 'contains'] })
+  /**
+   * `exact` casa o título inteiro; `contains`, um trecho dele.
+   *
+   * `type` explícito em vez de inferido, aqui e abaixo: o `emitDecoratorMetadata`
+   * só existe sob o compilador do TypeScript, e os testes rodam sob esbuild, que
+   * não o emite. Dizer o tipo produz o mesmo schema sem depender do flag — e para
+   * este campo a inferência nunca funcionou, porque uma união de literais não tem
+   * tipo em tempo de execução.
+   */
+  @Prop({ type: String, required: true, enum: ['exact', 'contains'] })
   kind: 'exact' | 'contains';
 
-  @Prop({ required: true })
+  @Prop({ type: String, required: true })
   value: string;
 
-  @Prop({ required: true })
+  @Prop({ type: String, required: true })
   category: string;
 
   /** Desempate entre regras igualmente específicas: a mais nova ganha. */

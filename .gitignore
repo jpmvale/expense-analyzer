@@ -31,6 +31,9 @@ yarn-debug.log*
 # cobertura de testes
 coverage/
 
+# binário do mongod que os testes de service baixam — o CI o guarda aqui
+.cache/
+
 # os / editor
 .DS_Store
 .idea/

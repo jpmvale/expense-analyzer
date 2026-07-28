@@ -591,13 +591,37 @@ Todos rodam da raiz do repositório.
 | `pnpm build` | Compila os três apps (Turborepo) |
 | `pnpm lint` | ESLint em todos os workspaces |
 | `pnpm typecheck` | Checagem de tipos em todos os workspaces |
-| `pnpm test` | Testes unitários (runner nativo do Node, sem banco) |
+| `pnpm test` | Testes: funções puras e serviços, estes contra um MongoDB em memória — [detalhes](#os-testes-que-precisam-de-banco) |
 | `pnpm db:up` / `pnpm db:down` | Sobe / derruba o MongoDB |
 | `pnpm db:seed` | Popula o banco com 18 meses de faturas fictícias (determinístico) |
 | `pnpm extract` | Roda o extractor com as suas faturas de verdade |
 | `pnpm reapply` | Reaplica regras e encargos sobre a base já gravada, sem reextrair — veja abaixo |
 
 Para inspecionar o banco pelo navegador: `docker compose --profile tools up -d` → http://localhost:8081.
+
+### Os testes que precisam de banco
+
+A maior parte das regras mora em função pura e é testada sem banco. Mas o que dá mais medo de
+mexer não é isso — é a reaplicação de regras, o upsert, o rename/merge de categoria e a redecisão
+da camada de encargo, e as quatro só existem falando Mongo.
+
+Um `Model` dublado mentiria justamente aí. `restoreSourceCategory` grava com pipeline de agregação
+(`{ $set: { category: '$sourceCategory' } }`), que copia campo para campo dentro do servidor: com um
+mock, o teste passaria gravando a string literal `"$sourceCategory"`. O rename depende de três
+`updateMany` acertando coleções diferentes. E a busca por título vira regex, onde `Mercadolivre*Mercadol`
+sem escapar casaria com "Mercadoliv" seguido de qualquer coisa.
+
+Então esses testes sobem um **mongod de verdade, em memória**, via `mongodb-memory-server`. O harness
+está em `apps/api/src/testing/mongo.ts` e não sobe o Nest: os serviços recebem os `Model` pelo
+construtor e são instanciados direto — o que se quer provar é a decisão e a escrita, não a injeção de
+dependência, que o smoke test do CI já exercita.
+
+O binário do mongod (~77 MB) é baixado uma vez e fica em cache; a suíte inteira roda em cerca de dois
+segundos depois disso. No CI ele é cacheado por `MONGOMS_DOWNLOAD_DIR`.
+
+> Um efeito colateral: os schemas declaram `@Prop({ type: ... })` explicitamente em vez de deixar o
+> tipo ser inferido. O `emitDecoratorMetadata` só existe sob o compilador do TypeScript, e os testes
+> rodam sob esbuild, que não o emite. O schema produzido é o mesmo.
 
 ### Quando rodar `pnpm reapply`
 
@@ -662,10 +686,11 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
   2× no 23), e o erro nunca é positivo — nenhuma compra passa do dia inferido. Em troca, um ciclo que
   fechou dias antes do usual só é reconhecido como fechado no dia inferido. Com menos de três faturas
   de histórico não há o que inferir e o recorte cai no mês calendário, que é o que a tela fazia antes.
-- Os testes cobrem as funções puras onde moram as regras: o parser de CSV, a montagem do filtro do
-  Mongo, a detecção de assinatura, a comparação com o histórico e o agrupamento dos gráficos. Não há
-  testes de integração — o CI compensa com lint, typecheck, build e um smoke test da API contra um
-  MongoDB de verdade.
+- Os testes cobrem as funções puras onde moram as regras — o parser de CSV, a montagem do filtro do
+  Mongo, a detecção de assinatura, a comparação com o histórico, o agrupamento dos gráficos — e os
+  serviços que escrevem, contra um **MongoDB de verdade em memória**
+  ([como](#os-testes-que-precisam-de-banco)). Fora de cobertura ficam os controllers e a injeção de
+  dependência do Nest, que o smoke test do CI exercita de ponta a ponta.
 - A interface é **escura por padrão**, com alternador claro/escuro/sistema. Os tokens vivem em
   `apps/web/src/assets/globals.css`, no padrão CSS-first do Tailwind 4.
 
