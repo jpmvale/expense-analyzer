@@ -41,6 +41,13 @@
       "dependsOn": ["^build"],
       "cache": false
     },
+    // Escreve no banco a partir da tabela de encargo compilada, então precisa do
+    // `^build` como as outras — rodar contra um `dist` velho reaplicaria a lista
+    // de palavras-chave antiga, que é exatamente o que este comando conserta.
+    "reapply": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
     "start": {
       "dependsOn": ["^build"],
       "cache": false

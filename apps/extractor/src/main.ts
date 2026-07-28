@@ -66,12 +66,22 @@ async function main() {
     // Reprocessar reescreve o mês inteiro, então a classificação do usuário
     // precisa ser recarimbada depois — é o passo que impede `pnpm extract` de
     // desfazer o trabalho de quem categorizou na tela.
+    //
+    // Roda mesmo sem regra nenhuma. A reaplicação deixou de ser só sobre regras
+    // quando passou a redecidir a camada de encargo, e um `if (rules.length > 0)`
+    // aqui significava que um mês lido isolado ficava com a lista de encargo do
+    // dia em que foi extraído.
     await backfillSourceCategory(purchases);
     const userRules = await loadRules(rules);
-    if (userRules.length > 0) {
-      const { classified } = await reapplyRules(createPurchaseStore(purchases), userRules);
+    const { classified, restored, financing } = await reapplyRules(
+      createPurchaseStore(purchases),
+      userRules,
+    );
+
+    if (classified + restored + financing > 0) {
       console.log(
-        `Regras do usuário: ${userRules.length} aplicadas, ${classified} compras classificadas.`,
+        `Reaplicadas ${userRules.length} regras: ${classified} classificadas, ` +
+          `${restored} devolvidas, ${financing} em encargos.`,
       );
     }
   } finally {

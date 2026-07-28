@@ -595,8 +595,37 @@ Todos rodam da raiz do repositório.
 | `pnpm db:up` / `pnpm db:down` | Sobe / derruba o MongoDB |
 | `pnpm db:seed` | Popula o banco com 18 meses de faturas fictícias (determinístico) |
 | `pnpm extract` | Roda o extractor com as suas faturas de verdade |
+| `pnpm reapply` | Reaplica regras e encargos sobre a base já gravada, sem reextrair — veja abaixo |
 
 Para inspecionar o banco pelo navegador: `docker compose --profile tools up -d` → http://localhost:8081.
+
+### Quando rodar `pnpm reapply`
+
+Quase nunca, e é de propósito: os caminhos que você percorre já reaplicam sozinhos. Criar, editar ou
+apagar uma regra reaplica na mesma requisição, e `pnpm extract` reaplica no fim.
+
+Sobra um caso, que nenhum deles cobre: **a tabela de palavras-chave de encargo mudou no código**.
+Ela é a única inferência por título que a reaplicação *redecide* em vez de herdar de
+`sourceCategory` — porque é a única que muda **quanto** você gastou, e não só como o gasto se
+reparte. Acrescentar `juros rotativo` à lista sem este comando só valeria a partir da próxima
+extração, o que é inalcançável para quem não tem mais os CSVs.
+
+```
+$ pnpm reapply
+Reaplicadas 255 regras:
+  0 compras classificadas por uma regra
+  0 devolvidas à categoria que veio da fatura
+  3 entraram ou saíram de encargos
+
+Atenção: encargo fica fora do total gasto — os totais por mês mudaram.
+```
+
+Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em dia o comando diz
+"nada mudou" e não escreve — é idempotente, e é a mesma operação de `POST /category-rule/reapply`.
+
+> Tirar uma palavra-chave também funciona, e é o caso mais delicado: devolver a compra à ingestão a
+> devolveria a `encargos`, então o motor refaz a inferência pelo título. `sourceCategory` fica
+> intocada nos dois sentidos — é a opinião congelada da fatura, e reaplicar nunca a reescreve.
 
 ---
 

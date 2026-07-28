@@ -15,7 +15,8 @@
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:seed": "turbo run seed --filter @expense/extractor",
-    "extract": "turbo run start --filter @expense/extractor"
+    "extract": "turbo run start --filter @expense/extractor",
+    "reapply": "turbo run reapply --filter @expense/extractor"
   },
   "devDependencies": {
     "turbo": "^2.5.6",
