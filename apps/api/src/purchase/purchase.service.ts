@@ -15,10 +15,12 @@ import {
   toSummary,
   type FacetShape,
 } from './purchase-query';
+import { buildPriceAlerts, PriceAlert } from './price-alerts';
 import { buildRecurringCharges, RecurringCharge } from './recurring';
 import { buildUncategorizedTitles, UncategorizedTitle } from './uncategorized';
 
 export type { Bill, CategoryBreakdown } from './bill-aggregation';
+export type { PriceAlert } from './price-alerts';
 export type { PricePlateau, RecurringCharge } from './recurring';
 export type { UncategorizedTitle } from './uncategorized';
 export type { CategorySlice, MonthPoint, SortableField, SortOrder } from './purchase-query';
@@ -155,6 +157,22 @@ export class PurchaseService {
       ...charge,
       name: byKey.get(charge.key) ?? null,
     }));
+  }
+
+  /**
+   * Os reajustes dos últimos ciclos fechados — o mesmo aviso do cartão "Mudou de
+   * preço" da Visão geral, como rota própria para quem quer perguntar sem abrir
+   * a tela: um cron pessoal, um atalho de celular.
+   */
+  async listPriceAlerts(): Promise<PriceAlert[]> {
+    const [bills, recurring] = await Promise.all([this.listBills(), this.listRecurring()]);
+
+    // Mesmo recorte da Visão geral: só o que já fechou é notícia estável — a
+    // fatura em aberto ainda pode ganhar compra e mudar o degrau.
+    const today = new Date().toISOString().slice(0, 10);
+    const closed = bills.filter((bill) => bill.cycleEnd < today);
+
+    return buildPriceAlerts(recurring, closed);
   }
 
   /**

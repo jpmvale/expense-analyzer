@@ -36,6 +36,15 @@ export class PurchaseController {
   listUncategorized() {
     return this.purchaseService.listUncategorized();
   }
+
+  @Get('price-alerts')
+  @ApiOperation({
+    summary:
+      'Reajustes dos últimos 3 ciclos fechados — o aviso da Visão geral, para consumir sem abrir a tela',
+  })
+  listPriceAlerts() {
+    return this.purchaseService.listPriceAlerts();
+  }
 }
 
 /**

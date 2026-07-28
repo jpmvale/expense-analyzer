@@ -415,8 +415,10 @@ O cartão some quando não há nada a dizer — um aviso que aparece todo dia de
 sobre a base de referência em 2026-07-28: das 6 assinaturas ativas, uma teve degrau nos três ciclos
 (Barbearia Sr Jhon, +8,8%, +R$ 84/ano).
 
-Isto não é um alerta de verdade — não há push, e-mail nem qualquer coisa fora da tela. É a Visão
-geral respondendo, quando você já está nela, ao que a tela de Assinaturas exigia procurar.
+O cartão exige abrir a tela — mas a mesma lista existe como rota própria,
+[`GET /purchase/price-alerts`](#get-purchaseprice-alerts), para quem quer perguntar sem abrir nada:
+um cron pessoal, um atalho de celular. A API não manda notificação sozinha, só responde "o que
+mudou" de um jeito que dá para plugar em qualquer canal depois.
 
 ---
 
@@ -599,6 +601,30 @@ O nome é só rótulo. Não muda categoria, total, agrupamento nem a ordem da li
 continua sendo função pura das compras: o `POST` grava numa coleção à parte e a API junta os dois na
 leitura. Por isso batizar não exige que a assinatura esteja na lista hoje — quem cancelou e voltou
 mantém o apelido durante o intervalo em que a série ficou curta demais para ser detectada.
+
+### `GET /purchase/price-alerts`
+
+O mesmo cartão **Mudou de preço** da Visão geral — [critério aqui](#quando-um-degrau-vira-aviso) —,
+como rota própria. Existe para quem quer perguntar "o que mudou" sem abrir a tela: um cron pessoal,
+um atalho de celular. A API não manda nada sozinha, só responde a lista; o canal fica por conta de
+quem consome.
+
+```jsonc
+[
+  {
+    "key": "srjhon barbearia",
+    "label": "Barbearia Sr Jhon",         // o apelido quando existe; senão, o título do cartão
+    "previous": 79.99,
+    "current": 86.99,
+    "change": 8.75,                       // %
+    "since": "2026-04-27T00:00:00.000Z",
+    "yearly": 84                          // (atual − anterior) × 12
+  }
+]
+```
+
+Igual à mecânica interna do cartão. Assinatura sem esse degrau nos três ciclos fechados mais
+recentes, ou encerrada, não aparece — vazio significa "nada a dizer agora", não "sem assinatura".
 
 ### `GET /purchase/uncategorized`
 
@@ -827,10 +853,11 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
   a mantém idempotente. Numa base pessoal some no tempo da requisição; veja
   [Escala](#escala-o-que-foi-medido) para os números. `/purchase` já não faz isso: pagina, ordena e
   agrega no servidor.
-- **O aviso de reajuste vive só na tela, sem canal fora dela.** A Visão geral traz os degraus dos
-  três ciclos mais recentes — [como](#quando-um-degrau-vira-aviso) — mas isso exige abrir a tela; não
-  há push, e-mail nem nada que chegue sozinho. O que a detecção em si erra de propósito está em
-  [Onde a detecção falha](#onde-a-detecção-falha).
+- **O aviso de reajuste tem rota, mas nada manda sozinho.** `GET /purchase/price-alerts` devolve os
+  mesmos degraus do cartão da Visão geral — [como](#quando-um-degrau-vira-aviso) — pronto para um
+  cron pessoal ou atalho de celular perguntar sem abrir a tela. Não há push, e-mail nem qualquer
+  canal embutido: a API responde "o que mudou", e o resto é de quem consome. O que a detecção em si
+  erra de propósito está em [Onde a detecção falha](#onde-a-detecção-falha).
 - `GET /purchase/recurring` varre a coleção inteira e agrupa em memória a cada requisição, porque a
   escada de preços depende da série completa. Mesmo custo da reaplicação de regras, e some igual numa
   base pessoal.
