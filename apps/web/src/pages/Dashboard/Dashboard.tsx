@@ -7,18 +7,22 @@ import { ExpectationList } from '@/components/expectation-list';
 import { PageHeader } from '@/components/layout/app-shell';
 import { StatCard } from '@/components/stat-card';
 import { TrendBadge } from '@/components/trend-badge';
-import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PriceChangeList } from '@/components/price-change-list';
 import { buildCategoryExpectations } from '@/lib/categoryExpectation';
+import { buildPriceChanges, RECENT_CYCLES } from '@/lib/priceChanges';
 import { currency, formatMonth } from '@/lib/utils';
-import { listBills } from '../../api/client';
+import { listBills, listRecurring } from '../../api/client';
 import type Bill from '../../interface/bill';
+import type { RecurringCharge } from '../../interface/recurring';
 
 /** Quantos meses a evolução mostra. O histórico inteiro vive em Compras. */
 const WINDOW = 24;
 
 const Dashboard = () => {
   const [bills, setBills] = useState<Bill[]>([]);
+  const [recurring, setRecurring] = useState<RecurringCharge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,6 +31,15 @@ const Dashboard = () => {
       .then(setBills)
       .catch((cause: Error) => setError(cause.message))
       .finally(() => setLoading(false));
+  }, []);
+
+  // As assinaturas vêm à parte, e a falha delas não derruba a tela: os números
+  // de fatura são o assunto da Visão geral, e o aviso de reajuste é um extra que
+  // ou aparece ou some sem fazer barulho.
+  useEffect(() => {
+    listRecurring()
+      .then(setRecurring)
+      .catch(() => setRecurring([]));
   }, []);
 
   const view = useMemo(() => {
@@ -81,6 +94,7 @@ const Dashboard = () => {
       // não diz se é muito. A régua é a própria categoria — cada uma tem uma
       // variação natural diferente.
       expectations: buildCategoryExpectations(closed),
+      closed,
       points: closed.slice(-WINDOW).map((bill) => ({
         month: bill.month,
         total: bill.total,
@@ -88,6 +102,11 @@ const Dashboard = () => {
       })),
     };
   }, [bills]);
+
+  const priceChanges = useMemo(
+    () => (view ? buildPriceChanges(recurring, view.closed) : []),
+    [recurring, view],
+  );
 
   if (error) {
     return (
@@ -187,6 +206,27 @@ const Dashboard = () => {
         </Card>
 
         <div className="space-y-4">
+          {/*
+           * O cartão só existe quando houve reajuste. Um aviso que aparece todo
+           * dia deixa de ser aviso, e a escada completa de cada assinatura já
+           * mora em Assinaturas — aqui entra apenas o degrau que é notícia.
+           */}
+          {priceChanges.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle>Mudou de preço</CardTitle>
+                <CardDescription>
+                  {priceChanges.length === 1 ? 'Uma assinatura' : `${priceChanges.length} assinaturas`}{' '}
+                  {priceChanges.length === 1 ? 'foi reajustada' : 'foram reajustadas'} nos últimos{' '}
+                  {RECENT_CYCLES} ciclos
+                </CardDescription>
+              </CardHeader>
+              <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+                <PriceChangeList changes={priceChanges} />
+              </div>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle>Fora do normal</CardTitle>

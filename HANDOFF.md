@@ -17,12 +17,12 @@ CI verde, árvore limpa.
 | | |
 | --- | --- |
 | **Base de referência** | 95 faturas · 5.744 lançamentos · `2018-11` a `2026-09` · R$ 217.774,05 |
-| **Testes** | 267 — api 166, extractor 35, categorization 35, web 31 |
+| **Testes** | 276 — api 166, extractor 35, categorization 35, web 40 |
 | **Workspaces** | `apps/{api,web,extractor}` + `packages/categorization` |
 | **Telas** | Visão geral · Compras · Faturas · Assinaturas · Sem categoria · Regras |
-| **Fila de classificação** | 113 títulos em `outros` |
-| **Assinaturas detectadas** | 17, 11 com nome formal |
-| **Regras** | 255 — 227 `exact`, 28 `contains`; nenhuma sem alcance |
+| **Fila de classificação** | 106 títulos em `outros` |
+| **Assinaturas detectadas** | 17, 11 com nome formal, 6 ativas |
+| **Regras** | 244 — 210 `exact`, 34 `contains`; nenhuma sem alcance |
 
 Subir o ambiente:
 
@@ -30,6 +30,31 @@ Subir o ambiente:
 docker compose up -d   # MongoDB
 pnpm dev               # API + front
 ```
+
+---
+
+## ✅ FEITO (2026-07-28) — cartão "Mudou de preço" na Visão geral
+
+A pendência logo abaixo dizia que o alerta hoje renderia um cartão de uma linha só — sinal fraco
+demais para justificar construir agora. Construído do mesmo jeito: o sinal de hoje não é o sinal de
+sempre, o cartão lê `/purchase/recurring`, que já existe, e a regra que o mantém quieto na maioria
+dos dias é a mesma que evita alarme falso em qualquer lugar deste projeto — ele some quando não há
+nada a dizer, em vez de aparecer todo dia e deixar de ser aviso.
+
+A régua é os **três ciclos fechados mais recentes**, e não um número de meses: a fronteira usa o fim
+do ciclo anterior à janela, para os três entrarem inteiros em vez de o mais antigo entrar pela
+metade — o mesmo cuidado com `cycleEnd` de `13e2940`. Sem histórico para recuar três ciclos, a janela
+vira "tudo o que existe", para uma base nova não começar com o alerta calado por falta de dado. A
+ordem é pela mordida anual — `(atual − anterior) × 12` —, não pela data: é o número que decide se
+vale olhar, o mesmo raciocínio do `yearlyIncrease` da tela de Assinaturas.
+
+Verificado na tela contra a base real: o cartão mostra exatamente a linha que a pendência media à
+mão — Barbearia Sr Jhon, R$ 79,99 → R$ 86,99, +8,8%, +R$ 84,00/ano — e some das outras cinco
+assinaturas ativas, que não tiveram degrau na janela. O link "Ver a escada de preços de todas" resolve
+para `/recurring`, e o console não acusou erro.
+
+Isto não é um alerta de verdade — não há push nem e-mail, só um cartão a mais na tela que já se abre
+primeiro. Fica registrado no README como a distinção que é.
 
 ---
 
@@ -144,11 +169,8 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
 
 **Produto**
 
-- **A detecção de assinatura é uma tela, não um aviso.** O degrau de preço está lá, mas é
-  preciso ir olhar — não há alerta quando um reajuste aparece numa fatura nova. Medido em
-  2026-07-28: das 6 ativas, **uma** teve degrau nos últimos 6 meses (Barbearia, +8,8% há 3 meses).
-  O alerta é bom desenho e hoje renderia um cartão só — o que é saudável para um alerta e fraco
-  para justificar a construção agora.
+- **O aviso de reajuste não sai da tela.** O cartão "Mudou de preço" está na Visão geral, mas só
+  quem abrir a página o vê — não há push, e-mail nem nada que chegue sozinho.
 - **A tela de Regras lista e apaga, mas não edita.** Mudar o destino de uma regra é criá-la de novo
   apontando para a categoria certa, e não dá para digitar um trecho à mão — ele sai do agrupamento,
   do título clicado ou de uma sugestão.

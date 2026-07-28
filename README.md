@@ -30,7 +30,7 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | **Classificação** | Você cria suas categorias e diz a que categoria cada estabelecimento pertence. A regra vale para todas as compras dele, passadas e futuras, e **sobrevive ao reprocessamento**. Reclassificar acontece em dois lugares: na tela *Sem categoria*, que lista o que está em `outros` do que mais pesa para o que menos pesa, e direto na coluna Categoria da tabela de Compras. |
 | **Compras** | Lista filtrável por **categoria**, **título** (busca parcial) e **mês da fatura**, com total, quantidade e ticket médio. Filtro, ordenação, paginação e os agregados dos painéis acontecem **no servidor** — os painéis descrevem o filtro inteiro, e a tabela mostra uma página dele. |
 | **Gráficos** | Gasto por mês e por categoria, em barras, acompanhando os filtros aplicados. |
-| **Visão geral** | A home: última fatura fechada com a variação contra o mês anterior, média dos doze meses anteriores, total do ano e a composição do mês. O recorte de "fechada" é o fim do ciclo de compras, não o mês do vencimento: o que ainda não fechou — o ciclo em aberto e as parcelas lançadas à frente — aparece à parte, fora dos agregados. O cartão **Fora do normal** compara cada categoria contra o próprio histórico — [como](#o-que-conta-como-fora-do-normal). |
+| **Visão geral** | A home: última fatura fechada com a variação contra o mês anterior, média dos doze meses anteriores, total do ano e a composição do mês. O recorte de "fechada" é o fim do ciclo de compras, não o mês do vencimento: o que ainda não fechou — o ciclo em aberto e as parcelas lançadas à frente — aparece à parte, fora dos agregados. O cartão **Fora do normal** compara cada categoria contra o próprio histórico — [como](#o-que-conta-como-fora-do-normal). O cartão **Mudou de preço** traz os reajustes recentes de assinatura, quando existem — [como](#quando-um-degrau-vira-aviso). |
 | **Faturas** | Uma linha por mês de referência: valor pago, total gasto, número de compras e o **percentual de cada categoria** no mês, com o fundo da célula proporcional ao peso. As colunas de categoria saem dos próprios dados — categoria nova ganha coluna sozinha. Meses com juros ou multa vêm marcados, e o valor aparece à parte do gasto. |
 | **Encargo ≠ gasto** | Juros, multa e saldo rolado saem do total gasto e ganham linha própria. Somá-los respondia "quanto você gastou" com dinheiro que ninguém gastou — [detalhes abaixo](#gasto-e-encargo-não-são-a-mesma-coisa). |
 | **Assinaturas** | Detecta as cobranças que se repetem todo mês com preço estável e mostra a **escada de preços** de cada uma: quando mudou, de quanto para quanto. É o que o app do banco não faz, porque depende de anos de série contínua — [como funciona](#como-uma-assinatura-é-detectada). Cada uma abre num painel com o **gráfico da evolução do preço**, e você pode dar a ela um **nome formal** — `Mp *Melimais` vira `Meli+` — que sobrevive à troca de gateway. |
@@ -368,6 +368,31 @@ quer dizer nada.
   aparecem separados. Fundir por prefixo resolveria esse caso e quebraria outros — `Casa de Paes
   Faria` e `Casa de Paes Faria Lj2` são filiais distintas —, e na base de referência havia só nove
   pares desses. Não compensou.
+
+### Quando um degrau vira aviso
+
+A tela de Assinaturas mostra a escada inteira de cada uma, mas exige ir olhar. O cartão **Mudou de
+preço** da Visão geral traz só o que é notícia agora: os degraus que caíram dentro dos **três ciclos
+fechados mais recentes**. Um reajuste de seis meses atrás já foi visto, não é mais aviso — está na
+escada, não no cartão.
+
+O corte usa o fim do ciclo, pelo mesmo motivo do resto da Visão geral: `month` nomeia o vencimento, e
+o consumo vem do mês anterior. A fronteira é o fim do ciclo **anterior** à janela de três, para os
+três ciclos entrarem inteiros em vez de o mais antigo entrar pela metade. Sem histórico suficiente
+para recuar três ciclos — uma base nova — a janela vira "tudo o que existe": é o caso em que todo
+degrau ainda é notícia, e o contrário silenciaria a tela justamente para quem acabou de chegar.
+
+Assinatura encerrada fica fora mesmo com reajuste no meio do caminho: um degrau em algo que não se
+paga mais não é decisão a tomar. E a ordem é pela **mordida anual** — `(atual − anterior) × 12` —, não
+pela data: um reajuste de R$ 2 por mês é R$ 24 no ano, e não compete com um de R$ 60. Percentual
+sozinho não diz isso; +8,8% pode ser R$ 7 ou R$ 700, dependendo do que ele é 8,8% de.
+
+O cartão some quando não há nada a dizer — um aviso que aparece todo dia deixa de ser aviso. Medido
+sobre a base de referência em 2026-07-28: das 6 assinaturas ativas, uma teve degrau nos três ciclos
+(Barbearia Sr Jhon, +8,8%, +R$ 84/ano).
+
+Isto não é um alerta de verdade — não há push, e-mail nem qualquer coisa fora da tela. É a Visão
+geral respondendo, quando você já está nela, ao que a tela de Assinaturas exigia procurar.
 
 ---
 
@@ -774,9 +799,10 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
   a mantém idempotente. Numa base pessoal some no tempo da requisição; veja
   [Escala](#escala-o-que-foi-medido) para os números. `/purchase` já não faz isso: pagina, ordena e
   agrega no servidor.
-- **A detecção de assinatura é uma tela, não um aviso.** O degrau de preço está lá, mas você precisa
-  ir olhar: não há alerta quando um reajuste aparece numa fatura nova. O que ela erra de propósito
-  está em [Onde a detecção falha](#onde-a-detecção-falha).
+- **O aviso de reajuste vive só na tela, sem canal fora dela.** A Visão geral traz os degraus dos
+  três ciclos mais recentes — [como](#quando-um-degrau-vira-aviso) — mas isso exige abrir a tela; não
+  há push, e-mail nem nada que chegue sozinho. O que a detecção em si erra de propósito está em
+  [Onde a detecção falha](#onde-a-detecção-falha).
 - `GET /purchase/recurring` varre a coleção inteira e agrupa em memória a cada requisição, porque a
   escada de preços depende da série completa. Mesmo custo da reaplicação de regras, e some igual numa
   base pessoal.
