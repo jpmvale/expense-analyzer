@@ -1,6 +1,6 @@
 # Retomar aqui — handoff de sessão
 
-> **Snapshot de 2026-07-28.** Documento vivo: atualizar quando o estado avançar.
+> **Snapshot de 2026-07-29.** Documento vivo: atualizar quando o estado avançar.
 > Serve para retomar em outra máquina ou em outra sessão — o conteúdo viaja pelo git,
 > a memória local do Claude em `~/.claude` **não** viaja.
 >
@@ -17,7 +17,7 @@ CI verde, árvore limpa.
 | | |
 | --- | --- |
 | **Base de referência** | 95 faturas · 5.744 lançamentos · `2018-11` a `2026-09` · R$ 217.774,05 |
-| **Testes** | 303 — api 193, extractor 35, categorization 35, web 40 |
+| **Testes** | 306 — api 193, extractor 35, categorization 35, web 43 |
 | **Workspaces** | `apps/{api,web,extractor}` + `packages/categorization` |
 | **Telas** | Login · Visão geral · Compras · Faturas · Assinaturas · Sem categoria · Regras |
 | **Fila de classificação** | 101 títulos em `outros` |
@@ -55,6 +55,26 @@ Verificado contra a base real, e não contra fixture: criei `TESTE-CLAUDE-VERIFI
 confirmei que o **mesmo `_id`** mudou de categoria — não duplicou —, apaguei pela tela e confirmei que
 a base voltou a 244 regras sem sobra. Console sem erro nos três passos; mobile sem overflow horizontal
 no formulário novo.
+
+---
+
+## ✅ FEITO (2026-07-29) — parcela futura marcada na tabela de Compras
+
+Última do bloco de Interface. Quatro (hoje, três — o número muda conforme faturas fecham) parcelas
+já lançadas em faturas futuras apareciam no topo da tabela, porque a ordenação padrão é por data
+decrescente e são as datas mais recentes que existem — mesmo sem terem acontecido. O registro é
+legítimo e a ordenação continua certa; o problema era só a linha não dizer por quê.
+
+Decidi **não mexer na ordenação** para resolver isso. O `/purchase` server-side (item de escala de
+uma sessão anterior) foi construído e testado com cuidado, e a única forma de demover essas linhas
+sem escondê-las seria trocar `.find().sort()` por uma agregação com chave de ordenação computada —
+risco desproporcional para um ganho que hoje afeta três linhas. Em vez disso, `isFutureDate` (nova, em
+`lib/utils.ts`) marca a linha com um badge "futura" ao lado da data, no desktop e no mobile: resolve o
+"parece a compra mais recente, mas não é" sem tocar em nada que já funcionava.
+
+Verificado num harness isolado (mesmo truque de sempre — HTML solto em `apps/web/public/`, removido
+depois): o badge não quebra a linha em `whitespace-nowrap`, cabe nas duas visões. 3 testes novos para
+`isFutureDate`.
 
 ---
 
@@ -330,12 +350,6 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
   construir isso agora seria infraestrutura desproporcional para um app de um usuário só.
 - **101 títulos ainda em `outros`.** A fila encolhe classificando pela tela de Sem categoria;
   a cauda é de títulos de ocorrência única, onde regra não pega.
-
-**Interface (menores, levantadas e não resolvidas)**
-
-- **Quatro parcelas futuras** aparecem no topo da tabela de Compras, por serem os lançamentos
-  de data mais recente. São registros legítimos; incomoda que o topo não seja "o que comprei
-  agora".
 
 **Técnico**
 

@@ -55,3 +55,17 @@ export function formatDate(value: string): string {
 export function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
+
+/**
+ * Se a data é depois de agora — uma parcela já lançada numa fatura futura,
+ * ainda não vencida.
+ *
+ * A tabela de Compras ordena por data decrescente por padrão, e isso põe essas
+ * linhas no topo: são as datas mais recentes que existem, mesmo sem terem
+ * acontecido ainda. O registro é legítimo — a parcela já está lançada —, e a
+ * ordenação por data continua correta; o que faltava era a linha dizer, sem
+ * precisar calcular, por que ela não é "a compra mais recente" de verdade.
+ */
+export function isFutureDate(value: string): boolean {
+  return new Date(value).getTime() > Date.now();
+}

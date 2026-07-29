@@ -24,7 +24,7 @@ import {
 import { CategoryPicker } from '@/components/category-picker';
 import type { Category } from '@/interface/category';
 import type Purchase from '@/interface/purchase';
-import { capitalize, cn, currency, formatDate, formatMonth } from '@/lib/utils';
+import { capitalize, cn, currency, formatDate, formatMonth, isFutureDate } from '@/lib/utils';
 
 type SortKey = SortableField;
 
@@ -43,6 +43,27 @@ function Amount({ value }: { value: number }) {
     <span className={cn('tabular font-medium', value < 0 && 'text-primary')}>
       {currency(value)}
     </span>
+  );
+}
+
+/**
+ * Marca a linha cuja data ainda não chegou — uma parcela já lançada numa
+ * fatura futura.
+ *
+ * A ordenação por data, que é o padrão da tabela, põe essas linhas no topo:
+ * são as datas mais recentes que existem, mesmo sem terem acontecido. O
+ * registro é legítimo e a ordem continua correta — o que faltava era a linha
+ * dizer isso sozinha, em vez de parecer "a compra mais nova" por engano.
+ */
+function FutureBadge() {
+  return (
+    <Badge
+      variant="outline"
+      className="ml-1.5 align-middle"
+      title="Parcela já lançada numa fatura futura — a data ainda não chegou."
+    >
+      futura
+    </Badge>
   );
 }
 
@@ -168,6 +189,7 @@ export function PurchasesTable({
                   onReclassify={onReclassify}
                 />
                 <span>{formatDate(purchase.date)}</span>
+                {isFutureDate(purchase.date) && <FutureBadge />}
               </div>
             </div>
             <div className="shrink-0 text-right">
@@ -238,6 +260,7 @@ export function PurchasesTable({
                 </TableCell>
                 <TableCell className="tabular whitespace-nowrap text-muted-foreground">
                   {formatDate(purchase.date)}
+                  {isFutureDate(purchase.date) && <FutureBadge />}
                 </TableCell>
               </TableRow>
             ))}
