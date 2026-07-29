@@ -17,7 +17,7 @@ CI verde, árvore limpa.
 | | |
 | --- | --- |
 | **Base de referência** | 95 faturas · 5.744 lançamentos · `2018-11` a `2026-09` · R$ 217.774,05 |
-| **Testes** | 306 — api 193, extractor 35, categorization 35, web 43 |
+| **Testes** | 317 — api 204 (193 serviço + 11 HTTP/DI), extractor 35, categorization 35, web 43 |
 | **Workspaces** | `apps/{api,web,extractor}` + `packages/categorization` |
 | **Telas** | Login · Visão geral · Compras · Faturas · Assinaturas · Sem categoria · Regras |
 | **Fila de classificação** | 101 títulos em `outros` |
@@ -353,8 +353,6 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
 
 **Técnico**
 
-- **Controllers e injeção de dependência** seguem fora dos testes — só o smoke test do CI os
-  exercita de ponta a ponta.
 - O aviso de **chunk acima de 500 kB** persiste no build. É Recharts e Radix, ambos em uso:
   resolver é code splitting, não remoção.
 
@@ -367,10 +365,22 @@ Coisas que já custaram tempo nesta base.
 **A API exige login desde `98370b2`, e você não vai ter a senha.** `.env` guarda
 `AUTH_PASSWORD_HASH` — um hash bcrypt, não reversível — não a senha em texto. Verificar uma feature
 clicando pela tela, ou por `curl` contra uma rota protegida, fica bloqueado até o dono digitar a
-senha. Duas saídas que não dependem disso: testes de serviço contra `mongodb-memory-server` (não
-passam pelo guard, porque instanciam o serviço direto, sem o Nest) e, para leitura, conectar direto
-no Mongo real com `mongoose.connect(MONGO_URI)` — contorna a API inteira, então só serve para medir,
-nunca para escrever.
+senha. Três saídas que não dependem disso: testes de serviço contra `mongodb-memory-server` (não
+passam pelo guard, porque instanciam o serviço direto, sem o Nest); `apps/api/src/http.itest.ts`,
+que sobe a API inteira contra Mongo em memória com credenciais de teste geradas na hora — esse
+exercita o guard de verdade; e, para leitura, conectar direto no Mongo real com
+`mongoose.connect(MONGO_URI)` — contorna a API inteira, então só serve para medir, nunca para
+escrever.
+
+**`.test.ts` roda em `tsx`, `.itest.ts` roda em `ts-node` — e não é intercambiável.** `tsx`
+transpila com esbuild, que não emite `emitDecoratorMetadata`: qualquer teste que suba o Nest de
+verdade (`Test.createTestingModule`) recebe `undefined` em todo construtor injetado por tipo, sem
+aviso — cada serviço quebra tentando chamar método de `undefined`. Os 193 testes de serviço nunca
+esbarraram nisso porque instanciam a classe direto. Um teste novo que precise do container do Nest
+(DI, guard, `ValidationPipe`) vai para `src/*.itest.ts` e roda via `pnpm test:http`
+(`ts-node/register/transpile-only`), não via `pnpm test`'s glob de `.test.ts`. Efeito colateral do
+mesmo tsconfig sem `esModuleInterop`: `import x from 'supertest'` (ou de `node:assert/strict`)
+compila para `.default`, que nenhum dos dois tem — use `import x = require('...')`.
 
 **Use `pnpm` direto, nunca `corepack pnpm`.** O `packageManager` está fixado em 10.15.0;
 chamado por corepack, um pnpm 11 instalado na máquina se recusa a trocar de versão e os

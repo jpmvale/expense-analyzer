@@ -748,7 +748,7 @@ Todos rodam da raiz do repositório.
 | `pnpm build` | Compila os três apps (Turborepo) |
 | `pnpm lint` | ESLint em todos os workspaces |
 | `pnpm typecheck` | Checagem de tipos em todos os workspaces |
-| `pnpm test` | Testes: funções puras e serviços, estes contra um MongoDB em memória — [detalhes](#os-testes-que-precisam-de-banco) |
+| `pnpm test` | Testes: funções puras, serviços contra um MongoDB em memória — [detalhes](#os-testes-que-precisam-de-banco) — e a API HTTP inteira, guard e `ValidationPipe` incluídos — [detalhes](#os-testes-que-sobem-a-api-inteira) |
 | `pnpm db:up` / `pnpm db:down` | Sobe / derruba o MongoDB |
 | `pnpm db:seed` | Popula o banco com 18 meses de faturas fictícias (determinístico) |
 | `pnpm extract` | Roda o extractor com as suas faturas de verdade |
@@ -814,6 +814,30 @@ segundos depois disso. No CI ele é cacheado por `MONGOMS_DOWNLOAD_DIR`.
 > tipo ser inferido. O `emitDecoratorMetadata` só existe sob o compilador do TypeScript, e os testes
 > rodam sob esbuild, que não o emite. O schema produzido é o mesmo.
 
+### Os testes que sobem a API inteira
+
+Os testes de serviço acima instanciam a classe direto pelo construtor — provam a decisão e a
+escrita, mas pulam o Nest inteiro: o container de injeção de dependência, o guard de sessão, o
+`ValidationPipe`. É exatamente aí que mora o risco que a autenticação (`98370b2`) introduziu — um
+módulo esquecido, um decorator de rota errado, um guard que libera o que devia bloquear — e nenhum
+desses erros aparece testando o serviço isolado.
+
+`apps/api/src/http.itest.ts` compila o `AppModule` de verdade via `Test.createTestingModule`,
+contra o mesmo `mongodb-memory-server`, com credenciais de teste geradas na hora — nunca as do
+`.env` real — e bate nas rotas por HTTP com `supertest`. Cobre: o guard bloqueando sem sessão e
+liberando as rotas `@Public()`; login e logout abrindo e fechando a sessão de verdade; o
+`ValidationPipe` rejeitando corpo incompleto e campo desconhecido; e a resolução de cada
+controller principal pelo container do Nest.
+
+Por que é um comando separado (`pnpm test:http`, dentro do `pnpm test` da API) em vez de entrar no
+glob de `*.test.ts`: o efeito colateral do `emitDecoratorMetadata` citado acima, que é inofensivo
+para os schemas do Mongoose, é fatal aqui. Sem a metadata de tipo, o Nest não sabe qual classe
+injetar em cada parâmetro de construtor e passa `undefined` — silenciosamente, até algum método
+tentar chamar em cima disso. `esbuild` (o transpilador do `tsx`, usado pelo resto da suíte) nunca
+emite essa metadata; é uma limitação conhecida, não um bug deste projeto. Por isso este arquivo é
+`.itest.ts`, não `.test.ts`, e roda sob `ts-node` (`ts-node/register/transpile-only`), que usa o
+compilador de verdade do TypeScript.
+
 ### Quando rodar `pnpm reapply`
 
 Quase nunca, e é de propósito: os caminhos que você percorre já reaplicam sozinhos. Criar, editar ou
@@ -873,10 +897,12 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
   fechou dias antes do usual só é reconhecido como fechado no dia inferido. Com menos de três faturas
   de histórico não há o que inferir e o recorte cai no mês calendário, que é o que a tela fazia antes.
 - Os testes cobrem as funções puras onde moram as regras — o parser de CSV, a montagem do filtro do
-  Mongo, a detecção de assinatura, a comparação com o histórico, o agrupamento dos gráficos — e os
+  Mongo, a detecção de assinatura, a comparação com o histórico, o agrupamento dos gráficos —, os
   serviços que escrevem, contra um **MongoDB de verdade em memória**
-  ([como](#os-testes-que-precisam-de-banco)). Fora de cobertura ficam os controllers e a injeção de
-  dependência do Nest, que o smoke test do CI exercita de ponta a ponta.
+  ([como](#os-testes-que-precisam-de-banco)), e a **API HTTP inteira** — guard de sessão,
+  `ValidationPipe`, injeção de dependência do Nest — subida contra o mesmo banco em memória
+  ([como](#os-testes-que-sobem-a-api-inteira)). Continua havendo um smoke test no CI, de ponta a
+  ponta contra uma instância real.
 - A interface é **escura por padrão**, com alternador claro/escuro/sistema. Os tokens vivem em
   `apps/web/src/assets/globals.css`, no padrão CSS-first do Tailwind 4.
 
