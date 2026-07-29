@@ -58,6 +58,27 @@ no formulário novo.
 
 ---
 
+## ✅ FEITO (2026-07-28) — cabeçalho da tabela de Compras não some mais ao rolar
+
+Uma tentativa anterior tinha ficado parada porque prendia o `top` do cabeçalho à altura da barra de
+filtros — frágil, porque essa altura muda com o que está acima na página (cartões, gráficos que
+aparecem e somem conforme o filtro), e cada mudança ali quebraria o cabeçalho de novo.
+
+O desenho que não depende de nada externo: em vez de grudar o cabeçalho no topo da **página**,
+limitei a altura da própria tabela (`max-h-[65vh]`) e deixei só o que está **dentro** dela rolar
+(`overflow-y-auto`). O `<thead>` fica `sticky top-0` relativo a essa caixa, não ao scroll da página —
+então não importa o que muda acima: a tabela nunca soube da barra de filtros, e não precisa saber
+agora. A paginação fica fora da caixa, em fluxo normal, e ganhou de brinde o mesmo benefício: nunca
+mais some rolando.
+
+Verificado num harness isolado (HTML solto, sem tocar no app autenticado — [por quê](#armadilhas-de-ambiente)),
+com a mesma estrutura e as cores reais do tema: o gesto de scroll com o mouse sobre a tabela move só
+`wrapper.scrollTop`, `window.scrollY` fica em zero; a página só se move quando o scroll acontece fora
+da tabela; a paginação aparece ao rolar a página, sempre alcançável. Não vi a tela real — só o
+mecanismo, isolado — pelo mesmo motivo de sempre: sem senha, sem login.
+
+---
+
 ## ✅ FEITO (2026-07-28) — sufixo comum na consolidação, e exceção rápida por conflito
 
 As duas últimas pendências de Produto. Medi contra a base real antes de decidir o desenho —
@@ -312,8 +333,6 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
 
 **Interface (menores, levantadas e não resolvidas)**
 
-- O **cabeçalho da tabela de Compras** some ao rolar. A correção acopla um deslocamento fixo
-  à altura da barra de filtros, que é frágil — por isso ficou parada.
 - **Quatro parcelas futuras** aparecem no topo da tabela de Compras, por serem os lançamentos
   de data mais recente. São registros legítimos; incomoda que o topo não seja "o que comprei
   agora".

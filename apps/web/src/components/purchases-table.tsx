@@ -180,9 +180,18 @@ export function PurchasesTable({
         ))}
       </ul>
 
-      <TableWrapper className="hidden md:block">
+      {/*
+       * O cabeçalho gruda no topo da própria tabela, não no topo da página — de
+       * propósito. Uma tentativa anterior prendia `top` à altura da barra de
+       * filtros, e isso é frágil: essa altura muda com o que está acima na
+       * página (cartões, gráficos), e cada mudança ali quebraria o cabeçalho de
+       * novo. Limitar a altura da tabela e rolar só o que está dentro dela
+       * resolve sem depender de nada fora daqui — inclusive a paginação, que
+       * fica fora do limite e nunca some rolando.
+       */}
+      <TableWrapper className="hidden max-h-[65vh] overflow-y-auto md:block">
         <Table>
-          <TableHeader>
+          <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow className="hover:bg-transparent">
               {COLUMNS.map(({ key, label, className }) => {
                 const active = sort.key === key;
