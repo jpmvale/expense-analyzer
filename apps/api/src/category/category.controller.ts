@@ -94,6 +94,14 @@ export class CategoryRuleController {
     return this.categoryService.upsertRule(dto);
   }
 
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Muda o trecho, o tipo ou o destino de uma regra que já existe, pelo id',
+  })
+  editRule(@Param('id') id: string, @Body() dto: CreateRuleDto) {
+    return this.categoryService.editRule(id, dto);
+  }
+
   @Post('consolidate')
   @ApiOperation({
     summary: 'Troca as regras `exact` cobertas pelo trecho por uma `contains`, reaplicando uma vez',

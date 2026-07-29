@@ -191,6 +191,116 @@ describe('CategoryService', () => {
     });
   });
 
+  describe('editRule', () => {
+    it('muda o trecho mantendo o mesmo _id, e reclassifica quem passa a alcançar', async () => {
+      await db.purchases.create([purchase('Uber Eats', 'outros')]);
+      const { rule } = await service.upsertRule({
+        kind: 'exact',
+        value: 'Uber',
+        category: 'transporte',
+      });
+
+      const editada = await service.editRule(String(rule._id), {
+        kind: 'exact',
+        value: 'Uber Eats',
+        category: 'transporte',
+      });
+
+      assert.equal(String(editada.rule._id), String(rule._id));
+      assert.equal(await db.rules.countDocuments(), 1);
+      assert.equal((await db.purchases.findOne().exec())?.category, 'transporte');
+    });
+
+    // A compra que a forma antiga governava não fica solta: a reaplicação já
+    // resolve, exatamente como resolve quando a regra é apagada.
+    it('devolve à categoria da fatura quem a forma antiga alcançava e a nova não', async () => {
+      await db.purchases.create([purchase('Uber', 'outros')]);
+      const { rule } = await service.upsertRule({
+        kind: 'exact',
+        value: 'Uber',
+        category: 'transporte',
+      });
+
+      await service.editRule(String(rule._id), {
+        kind: 'exact',
+        value: 'Uber Eats',
+        category: 'transporte',
+      });
+
+      assert.equal((await db.purchases.findOne().exec())?.category, 'outros');
+    });
+
+    it('muda o tipo de exact para contains', async () => {
+      await db.purchases.create([
+        purchase('Ifood *Ifd*Dominos', 'outros'),
+        purchase('Ifood *Ifd*Farmacia', 'outros'),
+      ]);
+      const { rule } = await service.upsertRule({
+        kind: 'exact',
+        value: 'Ifood *Ifd*Dominos',
+        category: 'restaurante',
+      });
+
+      await service.editRule(String(rule._id), {
+        kind: 'contains',
+        value: 'ifd*',
+        category: 'restaurante',
+      });
+
+      assert.equal(await db.purchases.countDocuments({ category: 'restaurante' }), 2);
+    });
+
+    it('recusa colidir com outra regra que já tem o mesmo par (kind, value)', async () => {
+      await db.rules.create({ kind: 'exact', value: 'Uber', category: 'transporte' });
+      const { rule } = await service.upsertRule({
+        kind: 'exact',
+        value: 'Netflix',
+        category: 'serviços',
+      });
+
+      const erro = await recusa(
+        service.editRule(String(rule._id), {
+          kind: 'exact',
+          value: 'uber', // mesma regra, só a caixa muda
+          category: 'serviços',
+        }),
+      );
+      assert.match(erro, /Já existe uma regra exata/);
+      // A colisão recusada não deixou a regra original mutilada.
+      assert.equal((await db.rules.findById(rule._id).exec())?.value, 'Netflix');
+    });
+
+    it('recusa id que não existe', async () => {
+      assert.match(
+        await recusa(
+          service.editRule('64b7f1c2a1b2c3d4e5f60718', {
+            kind: 'exact',
+            value: 'x',
+            category: 'y',
+          }),
+        ),
+        /Regra não encontrada/,
+      );
+    });
+
+    it('recusa apontar para o pagamento da fatura', async () => {
+      const { rule } = await service.upsertRule({
+        kind: 'exact',
+        value: 'Uber',
+        category: 'transporte',
+      });
+
+      const erro = await recusa(
+        service.editRule(String(rule._id), {
+          kind: 'exact',
+          value: 'Uber',
+          category: 'payment',
+        }),
+      );
+      assert.match(erro, /somaria a fatura ao gasto/);
+    });
+  });
+
   describe('deleteRule', () => {
     it('devolve as compras à categoria que a ingestão tinha resolvido', async () => {
       await db.purchases.create([purchase('Ikea', 'outros')]);
@@ -444,6 +554,82 @@ describe('CategoryService', () => {
         await recusa(service.consolidate({ value: '   ', category: 'Shopee' })),
         /vazio/,
       );
+    });
+
+    it('sem exceções, devolve exceptions: 0', async () => {
+      await comTresRegras();
+      const resultado = await service.consolidate({ value: 'shopee *', category: 'Shopee' });
+      assert.equal(resultado.exceptions, 0);
+    });
+
+    /*
+     * O meio-termo entre aplicar mesmo assim e não aplicar: o conflito vira
+     * regra exata na categoria de agora, e o trecho entra do mesmo jeito para
+     * o resto.
+     */
+    describe('exceptions', () => {
+      it('mantém a exceção na categoria atual mesmo com o trecho alcançando o título dela', async () => {
+        await comTresRegras();
+        await db.purchases.create([purchase('Shopee *Farmacia', 'saúde')]);
+
+        const resultado = await service.consolidate({
+          value: 'shopee *',
+          category: 'Shopee',
+          exceptions: [{ title: 'Shopee *Farmacia', category: 'saúde' }],
+        });
+
+        assert.equal(resultado.exceptions, 1);
+        assert.equal(
+          (await db.purchases.findOne({ title: 'Shopee *Farmacia' }).exec())?.category,
+          'saúde',
+        );
+        // O trecho consolidou as três normalmente — a exceção não custou o resto.
+        assert.equal(await db.purchases.countDocuments({ category: 'Shopee' }), 3);
+
+        const exata = await db.rules.findOne({ kind: 'exact', value: 'Shopee *Farmacia' }).exec();
+        assert.equal(exata?.category, 'saúde');
+      });
+
+      it('não duplica se o título da exceção já tiver virado regra exact', async () => {
+        await comTresRegras();
+        await db.purchases.create([purchase('Shopee *Farmacia', 'saúde')]);
+        await db.rules.create({ kind: 'exact', value: 'Shopee *Farmacia', category: 'saúde' });
+
+        await service.consolidate({
+          value: 'shopee *',
+          category: 'Shopee',
+          exceptions: [{ title: 'Shopee *Farmacia', category: 'saúde' }],
+        });
+
+        assert.equal(await db.rules.countDocuments({ value: 'Shopee *Farmacia' }), 1);
+      });
+
+      it('mantém várias exceções ao mesmo tempo', async () => {
+        await comTresRegras();
+        await db.purchases.create([
+          purchase('Shopee *Farmacia', 'saúde'),
+          purchase('Shopee *Vestido', 'vestuário'),
+        ]);
+
+        const resultado = await service.consolidate({
+          value: 'shopee *',
+          category: 'Shopee',
+          exceptions: [
+            { title: 'Shopee *Farmacia', category: 'saúde' },
+            { title: 'Shopee *Vestido', category: 'vestuário' },
+          ],
+        });
+
+        assert.equal(resultado.exceptions, 2);
+        assert.equal(
+          (await db.purchases.findOne({ title: 'Shopee *Farmacia' }).exec())?.category,
+          'saúde',
+        );
+        assert.equal(
+          (await db.purchases.findOne({ title: 'Shopee *Vestido' }).exec())?.category,
+          'vestuário',
+        );
+      });
     });
   });
 });

@@ -660,9 +660,10 @@ requisição e devolve quantas compras mudaram.
 | `GET /category-rule` | As suas regras, cada uma com quantas compras e títulos ela **governa** hoje |
 | `GET /category-rule/consolidation` | Onde um punhado de regras `exact` viraria uma `contains` — [critério abaixo](#onde-dá-para-juntar-regras). Vem com `dismissed` marcado nas que o usuário escondeu |
 | `POST /category-rule` | Cria ou atualiza a regra. Reclassificar o mesmo título edita a que já existe, nunca empilha uma segunda |
-| `POST /category-rule/consolidate` | Troca as `exact` cobertas pelo trecho por uma `contains`, reaplicando **uma vez** |
+| `POST /category-rule/consolidate` | Troca as `exact` cobertas pelo trecho por uma `contains`, reaplicando **uma vez**. Aceita `exceptions` — títulos a manter na categoria de agora, como `exact`, antes do trecho entrar |
 | `POST /category-rule/consolidation/dismiss` | Esconde uma sugestão da lista, pelo par `(categoria, trecho)` — não some da API, só ganha `dismissed: true` |
 | `POST /category-rule/consolidation/restore` | Desfaz o descarte acima |
+| `PATCH /category-rule/:id` | Muda o trecho, o tipo ou o destino de uma regra que já existe, pelo `id`. Ao contrário do `POST`, que acha a regra pelo par `(kind, value)`, este localiza por `id` — é a única forma de editar o próprio `value` sem deixar a forma antiga órfã |
 | `DELETE /category-rule/:id` | Apaga a regra e devolve as compras dela à `sourceCategory` |
 | `POST /category-rule/reapply` | Reclassifica a base com as regras e a lista de encargos de agora, sem reextrair. É o gatilho para uma mudança na lista de palavras-chave de encargo valer no que já está no banco |
 
@@ -703,12 +704,24 @@ regra própria; suas categorias vieram da ingestão. A sugestão aparece assim m
 vista, porque silenciá-la esconderia a maior alavanca da base e aplicá-la destruiria classificação
 deliberada.
 
+O candidato não precisa começar no início do título. `Ebanx*Spotify` e `Dm *Spotify` não têm prefixo
+em comum nenhum — o intermediário que processa a cobrança muda de nome, o serviço não —, mas os dois
+têm `spotify` como palavra, e é dali que sai o candidato: qualquer palavra do título, cortada em
+fronteira, entra na busca, não só a que começa em zero. Na base de referência isso rendeu três
+consolidações seguras novas que o prefixo sozinho não via — `melimais` (`Mp *Melimais`,
+`Ec *Melimais`, `Ec*Melimais`), `pizza` e `zoo `.
+
+**Conflito não precisa ser tudo ou nada.** Quando a lista de conflitos está expandida, dois botões
+ficam disponíveis: *Consolidar mesmo assim*, que muda a categoria de quem está em conflito também, e
+*Manter exceções e aplicar*, que cria uma regra `exact` para cada título de `conflicts` — na
+categoria em que já está — antes do trecho entrar. `exact` sempre ganha de `contains` na escada de
+precedência, e é isso que preserva a exceção. Medido na base de referência: as três sugestões
+bloqueadas hoje têm 2, 6 e 7 conflitos — nenhuma perto do extremo de 22 do exemplo do Shopee acima —,
+e o segundo botão fica indisponível acima de 15, porque criar dezenas de regras num clique só deixa
+de ser uma exceção rápida e vira algo que merece revisão título a título.
+
 #### Onde este critério falha
 
-- **Não enxerga sufixo comum, só prefixo.** `Ebanx*Spotify` e `Dm *Spotify` não geram candidato,
-  ainda que "spotify" seja o que os une.
-- **Conflito é binário.** Um candidato que cobre 50 regras e conflita com 1 é tão bloqueado quanto o
-  que conflita com 22 — e o primeiro seria resolvido criando uma `exact` para a exceção.
 - **Bloqueio é aviso, não trava.** `POST /category-rule/consolidate` sempre aplicou o que mandarem —
   a tela é quem decide o que mostrar. O botão de aplicar mesmo assim mora dentro da lista de
   conflitos expandida, e só ali: consolidar uma bloqueada é uma decisão informada, não a mesma coisa
@@ -833,11 +846,6 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
 
 ## Estado atual
 
-- **Só o destino de uma regra é editável — trecho e tipo, não.** Mudar a categoria acontece direto na
-  lista, e criar do zero digitando o trecho também é possível agora; as duas ações mandam o mesmo
-  `POST /category-rule` de sempre, que já fazia upsert por `(kind, value)` — não precisou de rota
-  nova. O que continua faltando é editar o `trecho` ou o tipo (`exact`/`contains`) de uma regra que já
-  existe: isso ainda é apagar e criar de novo.
 - **A lista de encargo se corrige sem reextrair; as outras palavras-chave, não.** `POST
   /category-rule/reapply` aplica a lista de encargo de agora ao que já está no banco, nos dois
   sentidos — [como](#gasto-e-encargo-não-são-a-mesma-coisa). Já as palavras-chave que apenas repartem
@@ -845,10 +853,6 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
   corrigi-las ainda depende de um `pnpm extract` — ou de uma regra sua, que resolve caso a caso e
   ganha da tabela. A diferença é deliberada: `sourceCategory` também guarda a categoria que o emissor
   mandou e a memória por título, e uma palavra-chave genérica não deve atropelar as duas.
-- **Não há tela para o reapply.** Na interface, a reclassificação só acontece de carona numa mudança
-  de regra; para rodá-la sozinha existe o [`pnpm reapply`](#quando-rodar-pnpm-reapply), que é
-  idempotente. O gatilho dela não é uma ação de usuário — é um deploy que mexeu na tabela de
-  encargo —, então a linha de comando é o lugar certo, mas quem só usa a tela não tem como chamá-la.
 - **A reaplicação de regras varre a coleção inteira a cada mudança**, e isso é uma escolha — é o que
   a mantém idempotente. Numa base pessoal some no tempo da requisição; veja
   [Escala](#escala-o-que-foi-medido) para os números. `/purchase` já não faz isso: pagina, ordena e

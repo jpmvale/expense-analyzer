@@ -132,4 +132,35 @@ describe('suggestConsolidations', () => {
     const rules = [contains('shopee', 'Shopee'), ...SHOPEE.slice(0, 2)];
     assert.deepEqual(suggestConsolidations(rules, titled(rules)), []);
   });
+
+  // O caso que motivou generalizar de prefixo para substring: o intermediário
+  // que processa a cobrança muda de nome ao longo dos anos, e as regras que
+  // nascem disso não compartilham prefixo nenhum — só a palavra do meio ou do
+  // fim, que é o serviço de verdade.
+  it('acha o trecho comum quando ele não é prefixo, só palavra do meio', () => {
+    const rules = [
+      exact('Ebanx*Spotify', 'Serviços'),
+      exact('Dm *Spotify', 'Serviços'),
+      exact('Ebw*Spotify', 'Serviços'),
+    ];
+    const [sugestao] = suggestConsolidations(rules, titled(rules));
+
+    assert.equal(sugestao.category, 'Serviços');
+    assert.ok(sugestao.value.includes('spotify'), sugestao.value);
+    assert.equal(sugestao.replaces.length, 3);
+  });
+
+  // Sem o generalizar, "gateway" nunca apareceria como candidato — só
+  // "ifood *ifd*" (prefixo). A palavra do fim precisa competir de igual para
+  // igual com a do começo.
+  it('prefere a palavra que cobre mais regras, esteja ela no início ou não', () => {
+    const rules = [
+      exact('Pag*Netflix', 'Streaming'),
+      exact('Ebn*Netflix', 'Streaming'),
+      exact('Dl*Netflix', 'Streaming'),
+    ];
+    const [sugestao] = suggestConsolidations(rules, titled(rules));
+
+    assert.ok(sugestao.value.includes('netflix'), sugestao.value);
+  });
 });

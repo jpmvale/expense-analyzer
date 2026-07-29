@@ -47,25 +47,42 @@ const MIN_VALUE_LENGTH = 4;
 const MIN_REPLACES = 3;
 
 /**
- * Os trechos que vale testar para uma regra: prefixos cortados em fronteira.
+ * Os trechos que vale testar para uma regra: qualquer palavra do título, ou
+ * sequência de palavras, cortada em fronteira — não só o prefixo.
  *
  * Cortar em fronteira — e não em qualquer posição — é o que faz o candidato ser
  * legível para quem vai aprová-lo. De `Shopee *Inpower` saem `shopee`,
  * `shopee ` e `shopee *`, não `shope` nem `shopee *inpo`. O espaço e o
  * asterisco ficam dentro do candidato de propósito: `shopee ` não pega
  * "shopeepay", e essa diferença já importou nesta base.
+ *
+ * O ponto de partida não é sempre o início da string. `Ebanx*Spotify` e
+ * `Dm *Spotify` não compartilham prefixo nenhum — o intermediário que processou
+ * a cobrança muda, o serviço não —, mas os dois têm `spotify` como palavra, e é
+ * essa palavra que precisa aparecer como candidato para as duas regras se
+ * encontrarem.
  */
-function candidatePrefixes(value: string): string[] {
+function candidateSubstrings(value: string): string[] {
   const normalized = normalize(value);
   const isSeparator = (char: string | undefined) =>
     char !== undefined && !/[a-z0-9]/.test(char);
 
+  // Onde uma palavra pode começar: o início da string, ou logo depois de uma
+  // fronteira. `dm *spotify` tem dois pontos de partida — `dm` em 0 e
+  // `spotify` logo após o `*` —, e cada um vira sua própria busca de prefixos.
+  const starts = [0];
+  for (let i = 1; i < normalized.length; i++) {
+    if (isSeparator(normalized[i - 1]) && !isSeparator(normalized[i])) starts.push(i);
+  }
+
   const found = new Set<string>();
-  for (let i = MIN_VALUE_LENGTH; i <= normalized.length; i++) {
-    // Fim da string, ou o próximo caractere abre uma fronteira: `shopee`.
-    if (i === normalized.length || isSeparator(normalized[i])) found.add(normalized.slice(0, i));
-    // Logo depois de uma fronteira: `shopee ` e `shopee *`.
-    if (isSeparator(normalized[i - 1])) found.add(normalized.slice(0, i));
+  for (const start of starts) {
+    for (let i = start + MIN_VALUE_LENGTH; i <= normalized.length; i++) {
+      // Fim da string, ou o próximo caractere abre uma fronteira: `spotify`.
+      if (i === normalized.length || isSeparator(normalized[i])) found.add(normalized.slice(start, i));
+      // Logo depois de uma fronteira: `shopee ` e `shopee *`.
+      if (isSeparator(normalized[i - 1])) found.add(normalized.slice(start, i));
+    }
   }
   return [...found];
 }
@@ -116,7 +133,7 @@ export function suggestConsolidations<T extends CategoryRule>(
     let safest: ConsolidationSuggestion<T> | null = null;
     let widest: ConsolidationSuggestion<T> | null = null;
 
-    for (const candidate of new Set(exact.flatMap((rule) => candidatePrefixes(rule.value)))) {
+    for (const candidate of new Set(exact.flatMap((rule) => candidateSubstrings(rule.value)))) {
       const replaces = exact.filter((rule) => normalize(rule.value).includes(candidate));
       if (replaces.length < MIN_REPLACES) continue;
 

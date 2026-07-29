@@ -1,5 +1,14 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
 
 /**
  * O nome da categoria vira fatia na barra empilhada e rótulo na legenda. O teto
@@ -27,6 +36,25 @@ export class RenameCategoryDto {
   name: string;
 }
 
+export class ConsolidationExceptionDto {
+  @ApiProperty({
+    description: 'O título exato a manter fora do trecho, como veio em `conflicts[].title`',
+    example: 'Pastel Dupark',
+  })
+  @IsString()
+  @IsNotEmpty()
+  title: string;
+
+  @ApiProperty({
+    description: 'A categoria a preservar para este título, como veio em `conflicts[].category`',
+    example: 'restaurante',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(40)
+  category: string;
+}
+
 export class ConsolidateDto {
   @ApiProperty({
     description: 'O trecho que passa a valer, como veio de `GET /category-rule/consolidation`',
@@ -41,6 +69,19 @@ export class ConsolidateDto {
   @IsNotEmpty()
   @MaxLength(40)
   category: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Títulos de `conflicts` a manter na categoria atual, virando regra `exact` antes do trecho ' +
+      'entrar. Resolve um conflito pequeno sem abrir mão do resto da consolidação nem mudar a ' +
+      'categoria de quem foi listado aqui.',
+    type: [ConsolidationExceptionDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ConsolidationExceptionDto)
+  exceptions?: ConsolidationExceptionDto[];
 }
 
 export class DismissConsolidationDto {

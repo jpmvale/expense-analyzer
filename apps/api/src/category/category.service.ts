@@ -347,6 +347,59 @@ export class CategoryService {
   }
 
   /**
+   * Muda o trecho ou o tipo de uma regra que já existe, mantendo o `_id`.
+   *
+   * `upsertRule` não serve para isto: ele acha a regra pelo par `(kind, value)`,
+   * então mandar um `value` novo não editaria a antiga — criaria uma segunda e
+   * deixaria a primeira órfã, presa ao título que ninguém mais quer. Esta rota
+   * localiza pelo `_id`, que não muda quando o conteúdo muda.
+   *
+   * As compras que a forma antiga da regra governava não ficam soltas: a
+   * reaplicação no fim já resolve isso — exatamente como resolve quando uma
+   * regra é apagada. Uma compra que a nova forma não alcança mais volta para
+   * `sourceCategory` ou passa a obedecer outra regra que já existia, a mesma
+   * escada de sempre.
+   */
+  async editRule(id: string, dto: CreateRuleDto): Promise<{ rule: CategoryRuleDocument } & ReapplyResult> {
+    const value = dto.value.trim();
+    const category = dto.category.trim();
+
+    if (value === '') throw new ConflictException('A regra precisa de um título ou trecho.');
+    if (isReservedCategory(category)) {
+      throw new ConflictException(
+        `"${category}" é o pagamento da fatura: uma regra apontando para lá somaria a fatura ao gasto.`,
+      );
+    }
+
+    const current = await this.ruleModel.findById(id).exec();
+    if (!current) throw new NotFoundException('Regra não encontrada.');
+
+    // Duas regras para o mesmo par `(kind, value)` só se contradiriam — o mesmo
+    // motivo que faz `upsertRule` editar em vez de duplicar. Aqui, como o `_id`
+    // já está fixado numa regra diferente, a saída é recusar em vez de escolher
+    // qual das duas prevalece.
+    const collision = (await this.ruleModel.find({ kind: dto.kind, _id: { $ne: id } }).exec()).find(
+      (rule) => normalize(rule.value) === normalize(value),
+    );
+    if (collision) {
+      throw new ConflictException(
+        `Já existe uma regra ${dto.kind === 'exact' ? 'exata' : 'por trecho'} para "${value}".`,
+      );
+    }
+
+    const rule = await this.ruleModel
+      .findByIdAndUpdate(id, { $set: { kind: dto.kind, value, category } }, { new: true })
+      .exec();
+    if (!rule) throw new NotFoundException('Regra não encontrada.');
+
+    if (!(await this.categoryModel.exists({ name: category }))) {
+      await this.categoryModel.create({ name: category });
+    }
+
+    return { rule, ...(await this.reapply()) };
+  }
+
+  /**
    * Troca as regras `exact` cobertas pelo trecho por uma `contains` só.
    *
    * Existe como operação própria por causa do custo: fazer isso pela API de
@@ -362,11 +415,19 @@ export class CategoryService {
    * decisão informada: a tela mostra o que o trecho levaria junto, e quem manda
    * aplicar mesmo assim está dizendo que aquilo é o que quer. O que não se pode
    * é fazer isso em silêncio.
+   *
+   * `exceptions` é o meio-termo entre aplicar mesmo assim e não aplicar: cada
+   * título vira regra `exact` na categoria de agora **antes** de o trecho
+   * entrar, e `exact` sempre ganha de `contains` na escada de precedência — é
+   * o que mantém a exceção onde estava, mesmo com o trecho passando a alcançá-
+   * la. Um conflito de 1 ou 2 títulos deixa de exigir abrir mão do resto da
+   * consolidação.
    */
   async consolidate({
     value,
     category,
-  }: ConsolidateDto): Promise<{ created: number; deleted: number } & ReapplyResult> {
+    exceptions = [],
+  }: ConsolidateDto): Promise<{ created: number; deleted: number; exceptions: number } & ReapplyResult> {
     const trecho = value.trim();
     if (trecho === '') throw new ConflictException('O trecho não pode ser vazio.');
     if (isReservedCategory(category)) {
@@ -376,6 +437,21 @@ export class CategoryService {
     const covered = (await this.ruleModel.find({ kind: 'exact', category }).exec()).filter((rule) =>
       normalize(rule.value).includes(normalize(trecho)),
     );
+
+    // Upsert, e não `create`: o título já não tem regra `exact` própria — é
+    // exatamente por isso que apareceu como conflito —, mas o upsert é a
+    // mesma cautela do resto do serviço contra um cliente com dado velho.
+    if (exceptions.length > 0) {
+      await this.ruleModel.bulkWrite(
+        exceptions.map(({ title, category: exceptionCategory }) => ({
+          updateOne: {
+            filter: { kind: 'exact', value: title },
+            update: { $setOnInsert: { kind: 'exact', value: title, category: exceptionCategory } },
+            upsert: true,
+          },
+        })),
+      );
+    }
 
     await this.ruleModel
       .updateOne(
@@ -389,7 +465,12 @@ export class CategoryService {
       await this.ruleModel.deleteMany({ _id: { $in: covered.map((rule) => rule._id) } }).exec();
     }
 
-    return { created: 1, deleted: covered.length, ...(await this.reapply()) };
+    return {
+      created: 1,
+      deleted: covered.length,
+      exceptions: exceptions.length,
+      ...(await this.reapply()),
+    };
   }
 
   async deleteRule(id: string): Promise<ReapplyResult> {

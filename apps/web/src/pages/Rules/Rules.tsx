@@ -18,13 +18,14 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { Category } from '@/interface/category';
+import type { Category, RuleKind } from '@/interface/category';
 import type { ConsolidationSuggestion, RuleUsage } from '@/interface/rule';
 import { capitalize, cn } from '@/lib/utils';
 import {
   consolidateRules,
   deleteRule,
   dismissConsolidation,
+  editRule as editRuleForm,
   listCategories,
   listConsolidations,
   listRules,
@@ -152,6 +153,27 @@ function Rules() {
   );
 
   /**
+   * A mesma consolidação, preservando `conflicts` na categoria de agora — cada
+   * título vira regra `exact` antes do trecho entrar, então continua onde
+   * estava mesmo com o trecho passando a alcançá-lo.
+   */
+  const consolidateWithExceptions = useCallback(
+    (suggestion: ConsolidationSuggestion) =>
+      run(async () => {
+        const { deleted, classified, exceptions } = await consolidateRules({
+          value: suggestion.value,
+          category: suggestion.category,
+          exceptions: suggestion.conflicts,
+        });
+        return (
+          `${deleted} regras viraram uma. ${classified} compras reclassificadas em ${capitalize(suggestion.category)}. ` +
+          `${exceptions} ${exceptions === 1 ? 'exceção virou' : 'exceções viraram'} regra exata.`
+        );
+      }),
+    [run],
+  );
+
+  /**
    * Descartar e restaurar não tocam em regra nem em compra — só na lista de
    * sugestões. Ainda assim passam pelo `run`, porque a lista vem do servidor:
    * marcar `dismissed` no estado local duplicaria a regra de quem decide o que
@@ -213,11 +235,34 @@ function Rules() {
    * cria: `kind` e `value` ficam iguais, então a API acha a regra pelo par e
    * atualiza a categoria em vez de duplicar — não existe rota própria para isso.
    */
-  const editRule = useCallback(
+  const editDestination = useCallback(
     (rule: RuleUsage, category: string) =>
       run(async () => {
         const { classified } = await saveRule({ kind: rule.kind, value: rule.value, category });
         return `${classified} ${classified === 1 ? 'compra passou' : 'compras passaram'} para ${capitalize(category)}.`;
+      }),
+    [run],
+  );
+
+  /**
+   * Muda o trecho ou o tipo de uma regra, mantendo o `_id` — esta usa `PATCH`
+   * pelo id, porque mudar o próprio `value` é o caso que `saveRule` não cobre:
+   * ele acharia a regra pelo par antigo e criaria uma segunda, órfã.
+   */
+  const editForm = useCallback(
+    (rule: RuleUsage, edit: { kind: RuleKind; value: string }) =>
+      run(async () => {
+        const { classified, restored } = await editRuleForm(rule._id, {
+          ...edit,
+          category: rule.category,
+        });
+        const partes = [
+          classified > 0 &&
+            `${classified} ${classified === 1 ? 'compra foi' : 'compras foram'} reclassificada${classified === 1 ? '' : 's'}`,
+          restored > 0 &&
+            `${restored} ${restored === 1 ? 'voltou' : 'voltaram'} à categoria da fatura`,
+        ].filter(Boolean);
+        return partes.length > 0 ? `Regra atualizada. ${partes.join('; ')}.` : 'Regra atualizada.';
       }),
     [run],
   );
@@ -300,6 +345,7 @@ function Rules() {
           <ConsolidationPanel
             suggestions={suggestions}
             onApply={consolidate}
+            onApplyWithExceptions={consolidateWithExceptions}
             onDismiss={dismiss}
             onRestore={restore}
           />
@@ -345,7 +391,8 @@ function Rules() {
             rules={filtered.slice(0, visible)}
             categories={categories}
             onDelete={remove}
-            onEdit={editRule}
+            onEditDestination={editDestination}
+            onEditForm={editForm}
           />
 
           {visible < filtered.length && (

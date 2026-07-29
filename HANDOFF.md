@@ -17,12 +17,13 @@ CI verde, árvore limpa.
 | | |
 | --- | --- |
 | **Base de referência** | 95 faturas · 5.744 lançamentos · `2018-11` a `2026-09` · R$ 217.774,05 |
-| **Testes** | 276 — api 166, extractor 35, categorization 35, web 40 |
+| **Testes** | 303 — api 193, extractor 35, categorization 35, web 40 |
 | **Workspaces** | `apps/{api,web,extractor}` + `packages/categorization` |
-| **Telas** | Visão geral · Compras · Faturas · Assinaturas · Sem categoria · Regras |
-| **Fila de classificação** | 106 títulos em `outros` |
+| **Telas** | Login · Visão geral · Compras · Faturas · Assinaturas · Sem categoria · Regras |
+| **Fila de classificação** | 101 títulos em `outros` |
 | **Assinaturas detectadas** | 17, 11 com nome formal, 6 ativas |
-| **Regras** | 244 — 210 `exact`, 34 `contains`; nenhuma sem alcance |
+| **Regras** | 180 — 143 `exact`, 37 `contains` |
+| **Autenticação** | sessão em cookie httpOnly, guarda no Mongo, um usuário só |
 
 Subir o ambiente:
 
@@ -54,6 +55,116 @@ Verificado contra a base real, e não contra fixture: criei `TESTE-CLAUDE-VERIFI
 confirmei que o **mesmo `_id`** mudou de categoria — não duplicou —, apaguei pela tela e confirmei que
 a base voltou a 244 regras sem sobra. Console sem erro nos três passos; mobile sem overflow horizontal
 no formulário novo.
+
+---
+
+## ✅ FEITO (2026-07-28) — sufixo comum na consolidação, e exceção rápida por conflito
+
+As duas últimas pendências de Produto. Medi contra a base real antes de decidir o desenho —
+conectando direto no Mongo, sem passar pela API (que agora exige sessão que eu não tenho).
+
+**Sufixo comum.** `candidatePrefixes` virou `candidateSubstrings`: o candidato não precisa mais
+começar no início do título, qualquer palavra cortada em fronteira entra na busca. Na base real isso
+achou três consolidações **seguras** que o prefixo sozinho nunca veria — `melimais` (`Mp *Melimais`,
+`Ec *Melimais`, `Ec*Melimais`, três gateways diferentes para o mesmo serviço), `pizza` e `zoo `.
+
+**Conflito não binário.** Quando a lista de conflitos está expandida, um segundo botão —
+"Manter exceções e aplicar" — cria uma regra `exact` para cada título de `conflicts`, na categoria em
+que já está, antes do trecho entrar. `exact` ganha de `contains` na escada, e é isso que preserva a
+exceção sem abrir mão do resto da consolidação.
+
+**O que a medição ensinou.** As três sugestões bloqueadas hoje têm 2, 6 e 7 conflitos — não perto do
+extremo de 22 do exemplo histórico do Shopee. Olhei os títulos, não só a contagem: o caso de 2
+conflitos (`transporte` × `park`, contra "Pastel Dupark" e "Casa Jardim Food Park") é um falso
+positivo óbvio — ninguém ia querer aqueles dois em transporte. Já os de 6 e 7 (`pizza` contra
+pizzarias hoje em `supermercado`; `posto ` contra postos hoje em `transporte`) são ambíguos de
+verdade — o dono pode preferir reclassificar em vez de manter. Por isso o botão de exceção não tem
+limiar de "poucos o bastante para eu decidir por você": ele fica disponível para qualquer contagem,
+sempre atrás do mesmo portão de consentimento informado do "aplicar mesmo assim" — expandir a lista
+primeiro —, com um teto de segurança em 15 (circuit breaker contra criar dezenas de regras num clique,
+não um julgamento de UX).
+
+Verificado: 13 testes em `rule-consolidation.test.ts` (2 novos, 11 preexistentes confirmando que o
+generalizar não quebrou nada — o caso `start=0` reduz matematicamente ao algoritmo antigo) e 4 novos
+em `category.service.test.ts` para `exceptions`, todos contra Mongo real em memória. Reconstruí a API
+e confirmei a rota nova viva por `curl`: `401` num `id` válido vs `404` numa rota inexistente, prova
+de que o guard está ativo e a rota está registrada — não pude ir além disso, porque logar pela tela
+pede a senha em texto, que só existe com o dono.
+
+---
+
+## ✅ FEITO (2026-07-28) — destino, trecho e tipo de regra editáveis, pelo `id`
+
+O commit anterior deixou o destino editável, reaproveitando o upsert por `(kind, value)` do
+`POST /category-rule`. Mas esse upsert não serve para editar o próprio `value`: mandar um valor novo
+não move a regra, cria uma segunda e deixa a antiga órfã. Faltava localizar por algo que não muda
+quando o conteúdo muda — o `_id`.
+
+`PATCH /category-rule/:id` faz isso: acha a regra pelo id, recusa se o novo par `(kind, value)`
+colidir com outra regra já existente, atualiza os três campos e reaplica uma vez. As compras que a
+forma antiga governava não ficam soltas — a reaplicação resolve exatamente como resolve quando a
+regra é apagada: quem a nova forma não alcança mais volta para `sourceCategory` ou passa a obedecer
+outra regra que já existia.
+
+Na tela, um ícone de lápis abre um modo de edição inline na própria linha — badge de tipo clicável
+igual ao `NewRuleForm`, campo de texto para o trecho, Salvar/Cancelar. Fica separado do `CategoryPicker`
+do destino de propósito: misturar os dois faria corrigir um erro de digitação exigir escolher
+categoria de novo.
+
+Verificado: 7 testes novos em `category.service.test.ts` (mudar trecho, mudar tipo, a compra que sai
+da forma antiga volta pra fatura, recusa de colisão, id inexistente, categoria reservada), todos
+passando contra Mongo real em memória. Mesma limitação da entrada acima: sem senha para logar, não
+cliquei pela tela — confirmei a rota viva por `curl` depois de reconstruir e reiniciar a API.
+
+---
+
+## ✅ FEITO (2026-07-28) — rota de avisos de reajuste, sem canal embutido (`aae3bcf`)
+
+`GET /purchase/price-alerts` devolve os mesmos degraus do cartão "Mudou de preço" da Visão geral, para
+quem quer perguntar sem abrir a tela — um cron pessoal, um atalho de celular. A lógica é a mesma de
+`apps/web/src/lib/priceChanges.ts`, portada para o backend porque antes só existia no cliente. A API
+não manda nada sozinha, só responde "o que mudou" — resolve a metade que dava para resolver da
+pendência "aviso de reajuste não sai da tela"; a outra metade (push, e-mail) segue não construída, e
+com razão: infraestrutura desproporcional para um app de um usuário só.
+
+*(Entrada escrita agora, retroativa — o commit não veio com uma entrada de HANDOFF na hora.)*
+
+---
+
+## ✅ FEITO (2026-07-28) — autenticação com sessão, guard global na API (`98370b2`)
+
+App pessoal, um usuário só, sem tela de cadastro. Sessão em cookie httpOnly, guardada no Mongo via
+`connect-mongo` — não em memória, porque a API sobe com `nest start --watch` e cada save reinicia o
+processo, o que derrubaria uma sessão guardada em RAM. Um guard global exige sessão em toda rota,
+exceto `/auth/login`, `/auth/session` e `/health`.
+
+Senha nunca em texto puro: só o hash bcrypt vai pro `.env`, gerado por
+`pnpm --filter @expense/api hash-password`. Front ganha tela de login, `AuthProvider` que checa a
+sessão uma vez ao montar, guarda de rota que lembra de onde veio, botão de sair no header.
+
+**O que isso muda para quem retoma em outra sessão:** a API só responde a quem tem cookie de sessão
+válido. `.env` guarda `AUTH_PASSWORD_HASH` — um hash, não a senha —, então não há como logar sem que
+o dono digite a senha real. Verificação de UI por clique fica bloqueada até isso acontecer; a saída é
+verificar pela camada de serviço (`mongodb-memory-server`, que não passa pelo guard) e, quando for só
+leitura, medir direto no Mongo, contornando a API inteira.
+
+*(Entrada escrita agora, retroativa — o commit não veio com uma entrada de HANDOFF na hora.)*
+
+---
+
+## ✅ FEITO (2026-07-28) — descartar/aplicar sugestão de consolidação, e reaplicar pela tela (`fa604c8`)
+
+A bloqueada sempre pôde ser aplicada pela API — só a tela escondia o botão. Ele passou a morar dentro
+da lista de conflitos expandida, para só aparecer depois de ver o preço. Descartar guarda a decisão
+por `(categoria, trecho)` — sem esconder da API, só marcando `dismissed: true` — e a tela encolhe as
+descartadas num rodapé com "restaurar".
+
+`POST /category-rule/reapply` já existia; faltava um jeito de chamá-lo sem `curl`. O botão fica no
+cabeçalho da tela de Regras, com o mesmo resumo que o comando de linha já mostra — resolve a
+pendência "não há tela para o reapply".
+
+*(Entrada escrita agora, retroativa — o commit não veio com uma entrada de HANDOFF na hora, e o README
+também ficou com um bullet velho em "Estado atual" dizendo que a tela não existia; corrigido junto.)*
 
 ---
 
@@ -193,18 +304,10 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
 
 **Produto**
 
-- **O aviso de reajuste não sai da tela.** O cartão "Mudou de preço" está na Visão geral, mas só
-  quem abrir a página o vê — não há push, e-mail nem nada que chegue sozinho.
-- **O trecho e o tipo de uma regra não são editáveis, só o destino.** Mudar `value` ou `kind` de uma
-  regra que já existe é apagar e criar de novo — editar os dois exigiria decidir o que fazer com as
-  compras que a forma antiga já tinha classificado.
-- **A consolidação não enxerga sufixo comum, só prefixo.** `Ebanx*Spotify` e `Dm *Spotify` não geram
-  candidato, ainda que "spotify" seja o que os une. E conflito é binário: cobrir 50 regras
-  conflitando com 1 é tão bloqueado quanto conflitar com 22, embora o primeiro se resolvesse
-  criando uma `exact` para a exceção.
-- **Não há tela para o reapply.** Existe o `pnpm reapply`, mas quem só usa a interface não
-  tem como chamá-lo.
-- **113 títulos ainda em `outros`.** A fila encolhe classificando pela tela de Sem categoria;
+- **O aviso de reajuste tem rota, mas nenhum canal chega sozinho.** `GET /purchase/price-alerts`
+  responde sob pedido; não há push, e-mail nem nada que avise sem alguém perguntar. Deliberado —
+  construir isso agora seria infraestrutura desproporcional para um app de um usuário só.
+- **101 títulos ainda em `outros`.** A fila encolhe classificando pela tela de Sem categoria;
   a cauda é de títulos de ocorrência única, onde regra não pega.
 
 **Interface (menores, levantadas e não resolvidas)**
@@ -219,8 +322,6 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
 
 - **Controllers e injeção de dependência** seguem fora dos testes — só o smoke test do CI os
   exercita de ponta a ponta.
-- **Sem autenticação, e a API escreve.** As rotas de categoria e regra mudam o banco sem pedir
-  nada. Ambiente confiável apenas.
 - O aviso de **chunk acima de 500 kB** persiste no build. É Recharts e Radix, ambos em uso:
   resolver é code splitting, não remoção.
 
@@ -229,6 +330,14 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
 ## Armadilhas de ambiente
 
 Coisas que já custaram tempo nesta base.
+
+**A API exige login desde `98370b2`, e você não vai ter a senha.** `.env` guarda
+`AUTH_PASSWORD_HASH` — um hash bcrypt, não reversível — não a senha em texto. Verificar uma feature
+clicando pela tela, ou por `curl` contra uma rota protegida, fica bloqueado até o dono digitar a
+senha. Duas saídas que não dependem disso: testes de serviço contra `mongodb-memory-server` (não
+passam pelo guard, porque instanciam o serviço direto, sem o Nest) e, para leitura, conectar direto
+no Mongo real com `mongoose.connect(MONGO_URI)` — contorna a API inteira, então só serve para medir,
+nunca para escrever.
 
 **Use `pnpm` direto, nunca `corepack pnpm`.** O `packageManager` está fixado em 10.15.0;
 chamado por corepack, um pnpm 11 instalado na máquina se recusa a trocar de versão e os

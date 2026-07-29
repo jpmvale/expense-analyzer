@@ -153,11 +153,16 @@ export function listConsolidations(): Promise<ConsolidationSuggestion[]> {
  * Aplica a consolidação: o trecho entra, as `exact` que ele cobre saem, e a base
  * é reaplicada **uma vez**. Fazer isso pela API de regras seria um `POST` e
  * cinquenta `DELETE`, cada um varrendo a base inteira.
+ *
+ * `exceptions` é o meio-termo entre aplicar mesmo assim e não aplicar: cada
+ * título listado vira regra `exact` na categoria de agora antes de o trecho
+ * entrar, então continua onde estava mesmo com o trecho alcançando-o.
  */
 export function consolidateRules(suggestion: {
   value: string;
   category: string;
-}): Promise<{ created: number; deleted: number } & ReapplyResult> {
+  exceptions?: Array<{ title: string; category: string }>;
+}): Promise<{ created: number; deleted: number; exceptions: number } & ReapplyResult> {
   return sendJson('POST', '/category-rule/consolidate', suggestion);
 }
 
@@ -194,6 +199,18 @@ export function saveRule(rule: {
 
 export function deleteRule(id: string): Promise<ReapplyResult> {
   return request<ReapplyResult>(`/category-rule/${id}`, { method: 'DELETE' });
+}
+
+/**
+ * Muda o trecho, o tipo ou o destino de uma regra que já existe, pelo id — ao
+ * contrário de `saveRule`, que acha a regra pelo par `(kind, value)` e por isso
+ * não serve para editar o próprio `value`.
+ */
+export function editRule(
+  id: string,
+  rule: { kind: RuleKind; value: string; category: string },
+): Promise<{ rule: CategoryRule } & ReapplyResult> {
+  return sendJson('PATCH', `/category-rule/${id}`, rule);
 }
 
 /**

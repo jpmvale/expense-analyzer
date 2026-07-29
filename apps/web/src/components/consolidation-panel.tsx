@@ -3,6 +3,7 @@ import {
   ChevronDownIcon,
   EyeOffIcon,
   MergeIcon,
+  ShieldIcon,
   Undo2Icon,
   XIcon,
 } from 'lucide-react';
@@ -12,6 +13,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ConsolidationSuggestion } from '@/interface/rule';
 import { capitalize, cn } from '@/lib/utils';
+
+/**
+ * Acima disto, "criar exceções e aplicar" para de ser um clique rápido e passa
+ * a ser dezenas de regras novas de uma vez, sem revisão individual — o mesmo
+ * risco que o resto desta tela evita. Na base de referência a mais cheia tinha
+ * 7; o teto é generoso de propósito, para não travar o caso real.
+ */
+const MAX_QUICK_EXCEPTIONS = 15;
 
 /**
  * Agrupa os títulos em conflito por categoria: "vestuário (5), saúde (4)" diz
@@ -29,6 +38,11 @@ function byCategory(conflicts: ConsolidationSuggestion['conflicts']): string {
 
 export interface ConsolidationActions {
   onApply: (s: ConsolidationSuggestion) => Promise<void>;
+  /**
+   * Aplica preservando os títulos de `conflicts` na categoria de agora, cada
+   * um virando regra `exact` antes do trecho entrar.
+   */
+  onApplyWithExceptions: (s: ConsolidationSuggestion) => Promise<void>;
   onDismiss: (s: ConsolidationSuggestion) => Promise<void>;
   onRestore: (s: ConsolidationSuggestion) => Promise<void>;
 }
@@ -36,10 +50,11 @@ export interface ConsolidationActions {
 function Suggestion({
   suggestion,
   onApply,
+  onApplyWithExceptions,
   onDismiss,
 }: {
   suggestion: ConsolidationSuggestion;
-} & Pick<ConsolidationActions, 'onApply' | 'onDismiss'>) {
+} & Pick<ConsolidationActions, 'onApply' | 'onApplyWithExceptions' | 'onDismiss'>) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const blocked = suggestion.conflicts.length > 0;
@@ -113,22 +128,38 @@ function Suggestion({
               </ul>
 
               {/*
-               * O botão da bloqueada mora aqui dentro, e não ao lado do da segura,
-               * porque só faz sentido depois de ler a lista acima. Não é proteção
-               * — o servidor aplica se mandarem —, é recusa de fingir que as duas
-               * são a mesma decisão: uma arruma regra, a outra desfaz
-               * classificação que alguém fez de propósito.
+               * Os dois botões moram aqui dentro, e não ao lado do da segura,
+               * porque só fazem sentido depois de ler a lista acima. Não é
+               * proteção — o servidor aplica os dois se mandarem —, é recusa de
+               * fingir que consolidar é uma decisão só: uma muda a categoria de
+               * quem está em conflito, a outra preserva cada um deles.
                */}
-              <Button
-                size="sm"
-                variant="destructive"
-                disabled={busy}
-                onClick={() => run(() => onApply(suggestion))}
-                className="mt-2.5"
-              >
-                <MergeIcon className="size-3.5" />
-                Consolidar mesmo assim
-              </Button>
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={busy}
+                  onClick={() => run(() => onApply(suggestion))}
+                >
+                  <MergeIcon className="size-3.5" />
+                  Consolidar mesmo assim
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy || suggestion.conflicts.length > MAX_QUICK_EXCEPTIONS}
+                  title={
+                    suggestion.conflicts.length > MAX_QUICK_EXCEPTIONS
+                      ? `Mais de ${MAX_QUICK_EXCEPTIONS} exceções de uma vez pede revisão individual, não um clique só.`
+                      : `Cria ${suggestion.conflicts.length === 1 ? 'uma regra exata' : `${suggestion.conflicts.length} regras exatas`} para manter estes títulos onde estão, e aplica o resto.`
+                  }
+                  onClick={() => run(() => onApplyWithExceptions(suggestion))}
+                >
+                  <ShieldIcon className="size-3.5" />
+                  Manter exceções e aplicar
+                </Button>
+              </div>
             </>
           )}
         </div>
@@ -219,6 +250,7 @@ function Dismissed({
 export function ConsolidationPanel({
   suggestions,
   onApply,
+  onApplyWithExceptions,
   onDismiss,
   onRestore,
 }: { suggestions: ConsolidationSuggestion[] } & ConsolidationActions) {
@@ -248,6 +280,7 @@ export function ConsolidationPanel({
               key={`${suggestion.category}-${suggestion.value}`}
               suggestion={suggestion}
               onApply={onApply}
+              onApplyWithExceptions={onApplyWithExceptions}
               onDismiss={onDismiss}
             />
           ))}
