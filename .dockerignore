@@ -5,3 +5,11 @@
 .git
 .env
 .env.*
+
+# Segredos do OAuth do Drive: entram por volume em runtime, nunca na imagem —
+# camada de imagem é legível por quem tiver o registry ou o daemon.
+**/drive-credentials.json
+**/token.json
+
+# Faturas locais: dado pessoal, não vai pra imagem.
+bills/

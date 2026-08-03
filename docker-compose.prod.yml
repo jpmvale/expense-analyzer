@@ -1,0 +1,103 @@
+# Produção. Standalone de propósito — NÃO combine com o docker-compose.yml de
+# desenvolvimento:
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# O compose de dev publica o Mongo em 27017. Combinar os dois herdaria esse
+# `ports:`, e como o Docker escreve as regras de iptables direto — ignorando o
+# ufw — o banco ficaria aberto para a internet inteira com o firewall "ativo".
+# Aqui o Mongo não publica porta nenhuma: só quem está na rede `internal` fala
+# com ele.
+
+services:
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    ports:
+      # Bind explícito em 127.0.0.1 — e o endereço aqui é a única coisa que
+      # protege o banco. Escrever "27017:27017" publicaria em 0.0.0.0, e como o
+      # Docker escreve iptables direto, o ufw NÃO impediria: o Mongo ficaria
+      # aberto pra internet, sem autenticação, com o firewall marcando "active".
+      # Só quem já está no host alcança — que é o caso de um túnel SSH.
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongodata:/data/db
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: expense-api
+    restart: unless-stopped
+    env_file: .env.prod
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      MONGO_URI: mongodb://mongo:27017/credit-card
+      # Mesma origem (o Caddy roteia /api/* para cá), então não há requisição
+      # cross-origin nenhuma para liberar. Deixar vazio aqui seria pior que
+      # inútil: a API interpreta vazio como "libera qualquer origem".
+      CORS_ORIGIN: https://expenses.imp-software.cloud
+    networks:
+      - internal
+      - edge
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Gravado no bundle em tempo de build — mudar exige rebuild, não restart.
+        VITE_API_URL: https://expenses.imp-software.cloud/api
+    container_name: expense-web
+    restart: unless-stopped
+    networks:
+      - edge
+
+  # Job de lote, não serviço. Fica no profile `jobs` para o `up -d` não disparar
+  # uma extração a cada deploy. Rodar sob demanda ou por timer:
+  #   docker compose -f docker-compose.prod.yml run --rm extractor
+  extractor:
+    build:
+      context: .
+      dockerfile: apps/extractor/Dockerfile
+    profiles: ["jobs"]
+    restart: "no"
+    env_file: .env.prod
+    environment:
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongo:27017/credit-card
+      GOOGLE_CREDENTIALS_PATH: /secrets/drive-credentials.json
+      GOOGLE_TOKEN_PATH: /secrets/token.json
+    volumes:
+      # Somente leitura: o extractor não precisa reescrever o OAuth client. O
+      # token.json fica gravável porque a lib atualiza o access token expirado.
+      - ./secrets/drive-credentials.json:/secrets/drive-credentials.json:ro
+      - ./secrets/token.json:/secrets/token.json
+    networks:
+      - internal
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+networks:
+  internal:
+    driver: bridge
+  # Criada uma vez, fora do compose: `docker network create edge`. É por ela que
+  # o Caddy compartilhado alcança os três projetos sem que eles se enxerguem
+  # entre si pela rede interna.
+  edge:
+    external: true
+
+volumes:
+  mongodata:

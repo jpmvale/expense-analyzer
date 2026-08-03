@@ -15,8 +15,12 @@ dist-ssr/
 # Credenciais do Google Drive (apps/extractor).
 # `drive-credentials.json` é o OAuth client baixado do Google Cloud Console;
 # `token.json` é o refresh token gerado no primeiro login. Ambos são segredos.
-drive-credentials.json
-token.json
+#
+# Os curingas cobrem os sufixos que aparecem na prática ao reautenticar
+# (`token.json.morto`, `token.json.bak`): renomear o arquivo escapava do padrão
+# exato e o segredo voltava a ser candidato a commit — num repo público.
+drive-credentials.json*
+token.json*
 
 # CSVs de fatura baixados localmente
 bills/*.csv
