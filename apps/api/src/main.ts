@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { MongoStore } from 'connect-mongo';
 // `express-session` só declara `export =` — sem esModuleInterop no tsconfig,
@@ -8,7 +9,16 @@ import * as session from 'express-session';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Em produção a API roda atrás do Caddy, que termina o TLS e repassa em HTTP.
+  // Sem confiar no proxy, `req.secure` é false e o `express-session` se recusa a
+  // mandar o cookie marcado como `secure` — o login responde 200 e mesmo assim
+  // nenhuma sessão gruda. O `1` limita a confiança ao primeiro proxy da cadeia,
+  // pra não aceitar um X-Forwarded-For forjado por quem chamar de fora.
+  if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+  }
 
   // CORS_ORIGIN vazio libera qualquer origem — conveniente em dev, e é o que a
   // app fazia antes. Em produção, liste as origens separadas por vírgula.
