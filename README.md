@@ -116,7 +116,7 @@ então tudo exige sessão, exceto `/auth/login`, `/auth/session` e `/health`.
 
 ```bash
 # Gera o hash — a senha em texto puro nunca é gravada em lugar nenhum, nem no .env
-pnpm --filter @expense/api hash-password -- <sua senha>
+pnpm --filter @expense/api hash-password '<sua senha>'
 ```
 
 Cole o resultado em `AUTH_PASSWORD_HASH` no `.env`, escolha `AUTH_USERNAME` e gere um

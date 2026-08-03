@@ -5,7 +5,7 @@ import { compare } from 'bcryptjs';
 /**
  * Um usuário só, guardado no `.env` — não há tela de cadastro nem coleção de
  * usuários. `AUTH_PASSWORD_HASH` é gerado por `pnpm --filter @expense/api
- * hash-password -- <senha>`; a senha em texto puro nunca é gravada em lugar
+ * hash-password '<senha>'`; a senha em texto puro nunca é gravada em lugar
  * nenhum, nem no `.env`.
  */
 @Injectable()
@@ -19,7 +19,7 @@ export class AuthService {
     if (!username || !passwordHash) {
       throw new Error(
         'AUTH_USERNAME e AUTH_PASSWORD_HASH precisam estar no .env. Gere o hash com ' +
-          '`pnpm --filter @expense/api hash-password -- <senha>`.',
+          "`pnpm --filter @expense/api hash-password '<senha>'`.",
       );
     }
     this.username = username;
