@@ -8,9 +8,15 @@ dist-ssr/
 .turbo/
 
 # env — nunca committar credenciais
-.env
-.env.local
-.env.*.local
+# Lista de permissão em vez de lista de proibição: ignora QUALQUER .env e abre
+# exceção só para os exemplos. Com a lista de proibição, `.env.prod` — que é o
+# arquivo de produção da VPS — não casava com padrão nenhum, e este repositório
+# é público: bastava um `git add -A` distraído dentro do servidor para publicar
+# as credenciais. Um arquivo novo com nome inesperado (.env.staging, .env.vps)
+# cairia na mesma armadilha.
+.env*
+!.env.example
+!.env*.example
 
 # Credenciais do Google Drive (apps/extractor).
 # `drive-credentials.json` é o OAuth client baixado do Google Cloud Console;
