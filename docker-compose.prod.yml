@@ -31,6 +31,11 @@ services:
       retries: 10
 
   api:
+    # `image` + `build` juntos: local, `docker compose build` constrói e marca
+    # com este nome; na VPS, `docker compose pull` baixa do GHCR sem compilar.
+    # IMAGE_TAG é o sha do commit, injetado pela esteira — o default `latest`
+    # mantém o fluxo de desenvolvimento funcionando sem variável nenhuma.
+    image: ghcr.io/jpmvale/expense-api:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -53,6 +58,7 @@ services:
         condition: service_healthy
 
   web:
+    image: ghcr.io/jpmvale/expense-web:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -68,6 +74,11 @@ services:
   # uma extração a cada deploy. Rodar sob demanda ou por timer:
   #   docker compose -f docker-compose.prod.yml run --rm extractor
   extractor:
+    # Também publicado, embora não seja implantado: quem o executa é o cron das
+    # 07:00 UTC, por `compose run --rm`. Sem `image` aqui, a VPS teria que
+    # compilar o extractor localmente — exatamente o que a esteira veio tirar da
+    # máquina de produção.
+    image: ghcr.io/jpmvale/expense-extractor:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: apps/extractor/Dockerfile
