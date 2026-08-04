@@ -58,6 +58,17 @@ jobs:
     env:
       MONGO_URI: mongodb://localhost:27017/credit-card
       PORT: 3000
+      # Credenciais DESCARTÁVEIS, válidas só dentro deste job efêmero. Não são
+      # segredo e não precisam virar secret do repositório: a API sobe aqui
+      # contra um Mongo de mentira que morre junto com o runner, e nada disso
+      # existe em produção — lá os valores vêm do .env.prod da VPS.
+      #
+      # Estão aqui porque a API passou a exigi-las no boot (guard de sessão
+      # global) e o smoke quebrou sem elas. O hash é de "ci-smoke-descartavel",
+      # gerado com `pnpm --filter @expense/api hash-password`.
+      SESSION_SECRET: ci-smoke-descartavel-nao-usar-em-producao
+      AUTH_USERNAME: ci
+      AUTH_PASSWORD_HASH: $2b$12$91/IvMSuKsdMP20bj6xr0OqWs8Rjf2hWhlnCFitkf2tctqRKSyMHq
 
     steps:
       - uses: actions/checkout@v5
@@ -80,5 +91,18 @@ jobs:
             curl -sf http://localhost:3000/health && break
             sleep 1
           done
-          curl -sf http://localhost:3000/purchase | grep -q '"total"'
-          curl -sf http://localhost:3000/purchase/bill | grep -q '"month"'
+
+          # /health é @Public(), o resto não: o guard de sessão é global, então
+          # sem login estes endpoints devolvem 401 e o `-f` derruba o job. O
+          # cookie jar carrega a sessão do login para as chamadas seguintes.
+          curl -sf -c cookies.txt -X POST http://localhost:3000/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"ci","password":"ci-smoke-descartavel"}' | grep -q '"username"'
+
+          curl -sf -b cookies.txt http://localhost:3000/purchase | grep -q '"total"'
+          curl -sf -b cookies.txt http://localhost:3000/purchase/bill | grep -q '"month"'
+
+          # Prova que o guard está mesmo protegendo: sem cookie tem que dar 401.
+          # Sem esta linha, um dia em que o guard fosse removido por engano o
+          # smoke continuaria verde.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/purchase)" = "401"
