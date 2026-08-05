@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { CategoryModule } from './category/category.module';
 import { PurchaseModule } from './purchase/purchase.module';
+import { SyncModule } from './sync/sync.module';
 
 // O .env é único e mora na raiz do monorepo. `__dirname` é `apps/api/src` em dev
 // (nest start) e `apps/api/dist` depois do build — mesma profundidade nos dois.
@@ -29,6 +30,7 @@ const rootEnv = resolve(__dirname, '../../../.env');
     PurchaseModule,
     CategoryModule,
     AuthModule,
+    SyncModule,
   ],
   controllers: [AppController],
 })

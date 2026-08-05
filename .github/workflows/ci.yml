@@ -102,6 +102,12 @@ jobs:
           curl -sf -b cookies.txt http://localhost:3000/purchase | grep -q '"total"'
           curl -sf -b cookies.txt http://localhost:3000/purchase/bill | grep -q '"month"'
 
+          # Só a leitura do estado — disparar POST /sync aqui leria faturas que
+          # não existem no runner. O que esta linha protege é a fiação: o módulo
+          # de sync carrega o pacote de ingestão, que arrasta o googleapis, e uma
+          # dependência que não sobrevive ao build derruba a API inteira no boot.
+          curl -sf -b cookies.txt http://localhost:3000/sync | grep -q '"running"'
+
           # Prova que o guard está mesmo protegendo: sem cookie tem que dar 401.
           # Sem esta linha, um dia em que o guard fosse removido por engano o
           # smoke continuaria verde.

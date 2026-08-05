@@ -5,7 +5,7 @@
  * Os dados são gerados com um PRNG de semente fixa: rodar duas vezes produz
  * exatamente o mesmo banco.
  */
-import { Bill } from './interfaces/bill';
+import type { Bill } from '@expense/ingestion';
 import { connect, writeBill } from './mongo';
 
 const MONTHS_OF_HISTORY = 18;
@@ -115,6 +115,7 @@ async function main() {
     console.log(`Populando o banco com ${bills.length} faturas de exemplo:`);
     for (const bill of bills) {
       await writeBill(purchases, bill);
+      console.log(`  ${bill.referenceMonth.toISOString().slice(0, 7)}: ${bill.data.length} compras`);
     }
     const total = bills.reduce((acc, bill) => acc + bill.data.length, 0);
     console.log(`Pronto: ${total} compras fictícias gravadas.`);

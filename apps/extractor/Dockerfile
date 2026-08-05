@@ -17,11 +17,13 @@ FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/extractor/package.json apps/extractor/
 COPY packages/categorization/package.json packages/categorization/
-RUN pnpm install --frozen-lockfile --filter @expense/extractor... --filter @expense/categorization...
+COPY packages/ingestion/package.json packages/ingestion/
+RUN pnpm install --frozen-lockfile --filter @expense/extractor... --filter @expense/categorization... --filter @expense/ingestion...
 
 FROM deps AS build
 COPY tsconfig.base.json turbo.json ./
 COPY packages/categorization packages/categorization
+COPY packages/ingestion packages/ingestion
 COPY apps/extractor apps/extractor
 RUN pnpm turbo run build --filter @expense/extractor
 RUN pnpm prune --prod
@@ -35,6 +37,9 @@ COPY --from=build --chown=node:node /app/package.json ./package.json
 COPY --from=build --chown=node:node /app/packages/categorization/dist ./packages/categorization/dist
 COPY --from=build --chown=node:node /app/packages/categorization/package.json ./packages/categorization/package.json
 COPY --from=build --chown=node:node /app/packages/categorization/node_modules ./packages/categorization/node_modules
+COPY --from=build --chown=node:node /app/packages/ingestion/dist ./packages/ingestion/dist
+COPY --from=build --chown=node:node /app/packages/ingestion/package.json ./packages/ingestion/package.json
+COPY --from=build --chown=node:node /app/packages/ingestion/node_modules ./packages/ingestion/node_modules
 COPY --from=build --chown=node:node /app/apps/extractor/dist ./apps/extractor/dist
 COPY --from=build --chown=node:node /app/apps/extractor/package.json ./apps/extractor/package.json
 COPY --from=build --chown=node:node /app/apps/extractor/node_modules ./apps/extractor/node_modules

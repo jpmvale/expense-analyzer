@@ -1,91 +1,94 @@
-import { reapplyRules } from '@expense/categorization';
-import { config } from './config';
-import { Bill } from './interfaces/bill';
+/**
+ * Lê as faturas da fonte configurada e grava no Mongo. `pnpm extract` na raiz.
+ *
+ * A leitura e a gravação em si moram em `@expense/ingestion`, e não aqui: a API
+ * dispara exatamente a mesma ingestão quando alguém clica em "Sincronizar", e
+ * duas cópias da mesma ordem de operações divergiriam. O que sobra neste arquivo
+ * é o que só existe na linha de comando — ler o `.env`, abrir a conexão, relatar
+ * no terminal e devolver um código de saída.
+ */
 import {
-  backfillSourceCategory,
-  connect,
-  createPurchaseStore,
-  loadRules,
-  writeBill,
-} from './mongo';
-import { fetchBillsFromDrive } from './sources/drive';
-import { fetchBillsFromDisk } from './sources/local';
+  consoleLogger,
+  fetchBills,
+  ingestBills,
+  type IngestionLogger,
+} from '@expense/ingestion';
+import { config } from './config';
+import { connect, createBillStore, type Connection } from './mongo';
 
 /**
- * Grava-se uma fatura por mês de referência, apagando o mês antes. Dois arquivos
- * apontando para o mesmo mês — o Drive aceita nomes repetidos — fazem o segundo
- * sobrescrever o primeiro sem dizer nada. Avisar é melhor que perder em silêncio.
+ * Escreve no terminal e guarda a mesma linha para o registro da execução.
+ *
+ * O terminal serve a quem está olhando agora; o registro serve à tela, que mostra
+ * o relato da última sincronização — inclusive das que rodaram pelo cron, de
+ * madrugada, quando ninguém estava vendo terminal nenhum.
  */
-function warnDuplicateMonths(bills: Bill[]): void {
-  const seen = new Map<string, number>();
-  for (const bill of bills) {
-    const month = bill.referenceMonth.toISOString().slice(0, 7);
-    seen.set(month, (seen.get(month) ?? 0) + 1);
-  }
+function teeLogger(lines: string[]): IngestionLogger {
+  return {
+    info: (message) => {
+      consoleLogger.info(message);
+      lines.push(message);
+    },
+    warn: (message) => {
+      consoleLogger.warn(message);
+      lines.push(`Atenção: ${message}`);
+    },
+  };
+}
 
-  for (const [month, count] of seen) {
-    if (count > 1) {
-      console.warn(
-        `Atenção: ${count} arquivos apontam para a fatura de ${month}. ` +
-          'Só o último será gravado — confira se são duplicatas do mesmo arquivo.',
-      );
-    }
-  }
+/**
+ * Registra a execução na mesma coleção que a API usa, com `startedAt` como
+ * chave da atualização.
+ *
+ * É o que faz uma extração pela linha de comando aparecer na tela como "última
+ * sincronização" — sem isto, a tela mostraria o último clique no botão e
+ * ignoraria tudo que rodou pelo cron.
+ */
+async function recordRun(
+  connection: Connection,
+  startedAt: Date,
+  fields: Record<string, unknown>,
+): Promise<void> {
+  await connection.runs.updateOne(
+    { trigger: 'cli', startedAt },
+    { $set: { trigger: 'cli', startedAt, ...fields } },
+    { upsert: true },
+  );
 }
 
 async function main() {
-  if (config.source !== 'drive' && config.source !== 'local') {
-    throw new Error(`EXTRACTOR_SOURCE inválido: "${config.source}". Use "drive" ou "local".`);
-  }
+  const lines: string[] = [];
+  const logger = teeLogger(lines);
 
-  console.log(
-    config.source === 'drive'
-      ? 'Buscando as faturas no Google Drive...'
-      : `Lendo as faturas de ${config.billsDir}...`,
-  );
+  const connection = await connect();
+  const startedAt = new Date();
 
-  const bills =
-    config.source === 'drive' ? await fetchBillsFromDrive() : await fetchBillsFromDisk();
-
-  if (bills.length === 0) {
-    console.log('Nenhuma fatura encontrada — nada a gravar.');
-    return;
-  }
-
-  warnDuplicateMonths(bills);
-
-  const { client, purchases, rules } = await connect();
   try {
-    console.log(`Gravando ${bills.length} faturas no MongoDB:`);
-    for (const bill of bills) {
-      await writeBill(purchases, bill);
-    }
-    const total = bills.reduce((acc, bill) => acc + bill.data.length, 0);
-    console.log(`Pronto: ${total} compras gravadas.`);
+    await recordRun(connection, startedAt, { status: 'running' });
 
-    // Reprocessar reescreve o mês inteiro, então a classificação do usuário
-    // precisa ser recarimbada depois — é o passo que impede `pnpm extract` de
-    // desfazer o trabalho de quem categorizou na tela.
-    //
-    // Roda mesmo sem regra nenhuma. A reaplicação deixou de ser só sobre regras
-    // quando passou a redecidir a camada de encargo, e um `if (rules.length > 0)`
-    // aqui significava que um mês lido isolado ficava com a lista de encargo do
-    // dia em que foi extraído.
-    await backfillSourceCategory(purchases);
-    const userRules = await loadRules(rules);
-    const { classified, restored, financing } = await reapplyRules(
-      createPurchaseStore(purchases),
-      userRules,
-    );
-
-    if (classified + restored + financing > 0) {
-      console.log(
-        `Reaplicadas ${userRules.length} regras: ${classified} classificadas, ` +
-          `${restored} devolvidas, ${financing} em encargos.`,
-      );
+    try {
+      const bills = await fetchBills(config.ingestion, logger);
+      const result = await ingestBills(bills, createBillStore(connection), logger);
+      await recordRun(connection, startedAt, {
+        status: 'ok',
+        finishedAt: new Date(),
+        ...result,
+        log: lines,
+      });
+    } catch (error) {
+      // O registro do erro é gravado antes de relançar. Uma falha do Drive às
+      // 07:00 pelo cron não deixa rastro nenhum onde alguém vá olhar — o log do
+      // container morre com ele; a tela é onde a pergunta é feita.
+      await recordRun(connection, startedAt, {
+        status: 'error',
+        finishedAt: new Date(),
+        message: error instanceof Error ? error.message : String(error),
+        log: lines,
+      });
+      throw error;
     }
   } finally {
-    await client.close();
+    await connection.client.close();
   }
 }
 

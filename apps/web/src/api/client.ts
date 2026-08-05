@@ -9,6 +9,7 @@ import type {
 import type ListPurchase from '../interface/listPurchase';
 import type { ConsolidationSuggestion, RuleUsage } from '../interface/rule';
 import type { RecurringCharge } from '../interface/recurring';
+import type { SyncStatus } from '../interface/sync';
 
 /**
  * Base da API. Vem de VITE_API_URL (.env da raiz); o default cobre o caso de
@@ -219,6 +220,20 @@ export function editRule(
  */
 export function reapplyRules(): Promise<ReapplyResult> {
   return request<ReapplyResult>('/category-rule/reapply', { method: 'POST' });
+}
+
+/** Se há uma sincronização rodando agora, e como terminou a última. */
+export function getSyncStatus(): Promise<SyncStatus> {
+  return getJson<SyncStatus>('/sync');
+}
+
+/**
+ * Pede uma sincronização e volta na hora — a API responde 202 assim que aceita o
+ * pedido, sem esperar a leitura das faturas terminar. Quem chama acompanha por
+ * `getSyncStatus`. Um 409 aqui quer dizer que já havia uma em andamento.
+ */
+export function startSync(): Promise<SyncStatus> {
+  return request<SyncStatus>('/sync', { method: 'POST' });
 }
 
 export function login(username: string, password: string): Promise<{ username: string }> {

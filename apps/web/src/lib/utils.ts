@@ -51,6 +51,27 @@ export function formatDate(value: string): string {
   return `${day}/${month}/${year}`;
 }
 
+/**
+ * Quanto tempo faz, em texto curto: `agora`, `há 5 min`, `há 3 h`, `há 2 dias`.
+ *
+ * A pergunta que isto responde é "isto está velho?", e para ela a data exata não
+ * serve: ninguém calcula de cabeça que 14/03 09:12 foi ontem de manhã. A data
+ * cheia continua disponível no `title` de quem mostra o texto.
+ */
+export function timeAgo(value: string): string {
+  const elapsed = Date.now() - new Date(value).getTime();
+  const minutes = Math.floor(elapsed / 60_000);
+
+  if (minutes < 1) return 'agora';
+  if (minutes < 60) return `há ${minutes} min`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `há ${hours} h`;
+
+  const days = Math.floor(hours / 24);
+  return `há ${days} ${days === 1 ? 'dia' : 'dias'}`;
+}
+
 /** Primeira letra maiúscula, preservando o resto (`eletrônicos` → `Eletrônicos`). */
 export function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);

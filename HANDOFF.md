@@ -17,13 +17,14 @@ CI verde, árvore limpa.
 | | |
 | --- | --- |
 | **Base de referência** | 95 faturas · 5.744 lançamentos · `2018-11` a `2026-09` · R$ 217.774,05 |
-| **Testes** | 317 — api 204 (193 serviço + 11 HTTP/DI), extractor 35, categorization 35, web 43 |
-| **Workspaces** | `apps/{api,web,extractor}` + `packages/categorization` |
+| **Testes** | 331 — api 212 (201 serviço + 11 HTTP/DI), ingestion 41, categorization 35, web 43 |
+| **Workspaces** | `apps/{api,web,extractor}` + `packages/{categorization,ingestion}` |
 | **Telas** | Login · Visão geral · Compras · Faturas · Assinaturas · Sem categoria · Regras |
 | **Fila de classificação** | 101 títulos em `outros` |
 | **Assinaturas detectadas** | 17, 11 com nome formal, 6 ativas |
 | **Regras** | 180 — 143 `exact`, 37 `contains` |
 | **Autenticação** | sessão em cookie httpOnly, guarda no Mongo, um usuário só |
+| **Sincronização** | botão no cabeçalho (`POST /sync`) + `pnpm extract` + cron — mesmo código, mesmo registro em `syncRuns` |
 
 Subir o ambiente:
 
@@ -31,6 +32,76 @@ Subir o ambiente:
 docker compose up -d   # MongoDB
 pnpm dev               # API + front
 ```
+
+---
+
+## ✅ FEITO (2026-08-04) — pedir o resync pela tela
+
+A pergunta que abriu a sessão: *"baixei mais duas faturas e coloquei no Drive — em que momento a
+aplicação vai lê-las?"*. A resposta era **nunca**: a ingestão era um comando de terminal, e a app
+não tinha como pedir nem como dizer que estava desatualizada — uma base parada e uma base em dia
+eram visualmente idênticas.
+
+**O que mudou de arquitetura.** O container da API não tinha o código do extractor nem os segredos
+do Drive, então "botão" não era fiação de UI. A leitura das faturas e a ordem das operações de uma
+ingestão saíram do extractor para `packages/ingestion`, com **config e log injetados** em vez de
+lidos de um módulo global — a API lê ambiente pelo `ConfigService` e o extractor por `dotenv`, e um
+`config` que lesse o `.env` na carga passaria por cima do `ConfigModule`, que só resolve depois. O
+banco fica fora do pacote, atrás de `BillStore`: driver cru no extractor, Mongoose na API. O
+extractor virou casca — `.env`, conexão, saída no console, código de saída.
+
+`POST /sync` responde **202** e roda em segundo plano (95 faturas passam de um minuto; segurar a
+conexão entregaria a decisão a um timeout do Caddy), **409** se já houver uma rodando. `GET /sync`
+devolve o estado e a última execução, e a tela pergunta de 2 em 2 segundos **só enquanto roda**.
+
+**As três armadilhas que custaram atenção.**
+
+1. **O consentimento do Google não pode acontecer na API.** O `@google-cloud/local-auth` sobe um
+   servidor local e abre o navegador do host — num container isso não abre nada, e a requisição
+   ficaria pendurada até o timeout sem dizer por quê. Daí `allowInteractiveAuth`, falso na API:
+   sem `token.json`, erro na hora, com o texto mandando rodar `pnpm extract` numa máquina com
+   navegador. Quem cria o token continua sendo o comando de terminal; a API só lê.
+2. **O `running` precisa de prazo de validade.** É ele que barra a segunda ingestão, então um
+   container derrubado no meio deixaria o botão travado para sempre. Passados 30 min ele é dado
+   como interrompido na próxima leitura — carimbado na leitura, não por job de limpeza, porque é o
+   único momento em que alguém se importa com aquele estado.
+3. **O extractor grava em `syncRuns` também.** Sem isso, a extração do cron das 07:00 não deixaria
+   rastro e a tela mostraria "nunca sincronizado" logo depois de a base ter sido atualizada.
+
+**O que ficou de fora, e por quê.** A tela não recarrega sozinha no fim: as telas guardam o próprio
+estado, e recarregar no meio de *Sem categoria* jogaria fora a regra que a pessoa estava montando —
+o popover oferece "Atualizar a tela" e espera o clique. E nada observa a fonte: sem webhook do Drive
+e sem varredura de dentro da API, o agendamento continua no sistema operacional da VPS.
+
+Detalhes em [`README.md`](README.md#quando-as-faturas-novas-entram).
+
+---
+
+## ✅ FEITO (2026-07-29) — testes de controller e injeção de dependência (`c754a9f`)
+
+A última pendência de Técnico. Os testes de serviço instanciam a classe direto pelo construtor —
+provam a decisão e a escrita, mas pulam o Nest inteiro: container de injeção, guard de sessão,
+`ValidationPipe`. Depois de `98370b2` (autenticação) isso deixou de ser um gap teórico — é
+exatamente o tipo de fiação (DI, guard, decorator) que aquela mudança introduziu.
+
+`apps/api/src/http.itest.ts` sobe o `AppModule` de verdade via `Test.createTestingModule`, contra
+`mongodb-memory-server`, com credenciais de teste geradas na hora, e bate nas rotas por HTTP com
+`supertest`. 11 testes: guard bloqueando sem sessão e liberando `@Public()`; login e logout
+abrindo/fechando sessão de verdade; `ValidationPipe` rejeitando corpo incompleto e campo
+desconhecido; resolução de cada controller principal pelo container do Nest.
+
+**O obstáculo real.** `tsx` (esbuild) não emite `emitDecoratorMetadata` — o Nest recebe `undefined`
+em todo construtor injetado por tipo, silenciosamente, e cada serviço quebra chamando método em
+cima disso. Os 193 testes de serviço nunca esbarraram nisso porque pulam exatamente essa reflexão.
+Resolvido rodando este arquivo sob `ts-node` (`pnpm test:http`, separado do glob de `.test.ts`) —
+o que expôs um segundo problema do mesmo tsconfig (sem `esModuleInterop`): `import x from
+'supertest'`/`'node:assert/strict'` compila para `.default`, que nenhum dos dois tem sob `ts-node`.
+Resolvido com `import x = require(...)`. Também precisei fechar a conexão própria do
+`connect-mongo` no `stop()` do harness (senão o processo nunca saía) e excluir `**/*.itest.ts` de
+`tsconfig.build.json` (senão o `dist` de produção arrastava `mongodb-memory-server`, uma
+devDependency).
+
+Detalhes em [`README.md`](README.md#os-testes-que-sobem-a-api-inteira).
 
 ---
 
@@ -350,11 +421,23 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
   construir isso agora seria infraestrutura desproporcional para um app de um usuário só.
 - **101 títulos ainda em `outros`.** A fila encolhe classificando pela tela de Sem categoria;
   a cauda é de títulos de ocorrência única, onde regra não pega.
+- **A sincronização não avisa quando termina.** Quem clica e troca de aba não recebe nada; o
+  resultado espera no popover. Mesma decisão do aviso de reajuste, e pelo mesmo motivo.
 
 **Técnico**
 
-- O aviso de **chunk acima de 500 kB** persiste no build. É Recharts e Radix, ambos em uso:
-  resolver é code splitting, não remoção.
+- **O cron das 07:00 UTC existe só como comentário.** O `docker-compose.prod.yml` diz que quem roda
+  o extractor é "o cron das 07:00", mas não há crontab nem systemd timer no repositório e a esteira
+  não instala nenhum — se ele existe, foi criado à mão na VPS e ninguém sabe. Enquanto isso não for
+  versionado, o único gatilho garantido é o botão. Verificar com `crontab -l` na VPS antes de
+  assumir qualquer coisa.
+
+O aviso de **chunk acima de 500 kB** que estava anotado aqui não reproduz
+mais — build limpo, sem cache, conferido em 2026-07-29: o maior chunk (`index`) está em 423 kB e o
+do Recharts (`BarChart`, já separado por causa do `lazy()` por rota em `pages/lazy.tsx`) em 365 kB,
+os dois abaixo do limite padrão do Vite. Não houve mudança de código para isso — ou o bundle já
+tinha encolhido o bastante desde que a nota foi escrita, ou o `lazy()` por rota (que já existia)
+sempre tivesse sido suficiente e a entrada ficou desatualizada.
 
 ---
 
@@ -371,6 +454,15 @@ que sobe a API inteira contra Mongo em memória com credenciais de teste geradas
 exercita o guard de verdade; e, para leitura, conectar direto no Mongo real com
 `mongoose.connect(MONGO_URI)` — contorna a API inteira, então só serve para medir, nunca para
 escrever.
+
+Há uma quarta, e é a única que permite **clicar pela tela**: subir um ambiente descartável ao lado do
+real, com credenciais próprias. Um `AUTH_PASSWORD_HASH` gerado na hora com
+`pnpm --filter @expense/api hash-password`, `MONGO_URI` apontando para um banco de rascunho —
+`.../sync-verify`, nunca `credit-card` — e uma entrada temporária em `.claude/launch.json` com
+`runtimeExecutable: "env"` para injetar tudo isso antes do `pnpm --filter @expense/api dev`. Foi
+assim que o botão de sincronizar foi verificado ponta a ponta em 2026-08-04, incluindo o 409 e a
+sobrevivência das regras à regravação, sem encostar na base real. Ao terminar: derrubar os servidores,
+apagar a entrada do `launch.json` e `db.getSiblingDB("sync-verify").dropDatabase()`.
 
 **`.test.ts` roda em `tsx`, `.itest.ts` roda em `ts-node` — e não é intercambiável.** `tsx`
 transpila com esbuild, que não emite `emitDecoratorMetadata`: qualquer teste que suba o Nest de

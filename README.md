@@ -15,9 +15,15 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
   faturas .csv                  MongoDB                  API (Nest)              Front (React)
  ┌──────────────┐            ┌───────────┐            ┌─────────────┐         ┌───────────────┐
  │ Google Drive │──extractor─▶│ purchases │◀───────────│  /purchase  │◀────────│ tabela +      │
- │  ou ./bills  │            │           │            │/purchase/bill│         │ gráficos      │
- └──────────────┘            └───────────┘            └─────────────┘         └───────────────┘
+ │  ou ./bills  │      ▲     │           │            │/purchase/bill│         │ gráficos      │
+ └──────────────┘      │     └───────────┘            └─────────────┘         └───────────────┘
+        │              └───────────────────────────────── POST /sync ◀──────── botão
+        └──────────────────────────────────────────────────────────┘        "Sincronizar"
 ```
+
+A ingestão tem dois gatilhos e um caminho só: `pnpm extract` na linha de comando e o botão
+**Sincronizar** no cabeçalho da app rodam o mesmo código — veja
+[Quando as faturas novas entram](#quando-as-faturas-novas-entram).
 
 ---
 
@@ -26,6 +32,7 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
 | Área | O que faz |
 | --- | --- |
 | **Ingestão** | Lê as faturas em CSV do **Google Drive** ou de uma **pasta local**, categoriza as compras e grava no MongoDB. Regravar uma fatura sobrescreve o mês inteiro — rodar de novo é idempotente. |
+| **Sincronização** | Um botão no cabeçalho pede a ingestão sem sair da tela, e diz **quando foi a última** e o que ela mexeu. Vale para as duas pontas: uma extração pela linha de comando ou pelo cron aparece ali igual, porque as duas gravam o mesmo registro — [detalhes](#quando-as-faturas-novas-entram). |
 | **Categorização** | Uma escada de precedência (detalhada [abaixo](#como-uma-compra-ganha-categoria)) que termina em `outros`. No topo dela ficam as **suas regras**; embaixo, a categoria do CSV, a herança por título e as palavras-chave. Códigos internos do emissor viram rótulos do domínio: `reversal_*` → `estorno`, `tax_*` → `impostos`, `bnpl_*` → `parcelado`. |
 | **Classificação** | Você cria suas categorias e diz a que categoria cada estabelecimento pertence. A regra vale para todas as compras dele, passadas e futuras, e **sobrevive ao reprocessamento**. Reclassificar acontece em dois lugares: na tela *Sem categoria*, que lista o que está em `outros` do que mais pesa para o que menos pesa, e direto na coluna Categoria da tabela de Compras. |
 | **Compras** | Lista filtrável por **categoria**, **título** (busca parcial) e **mês da fatura**, com total, quantidade e ticket médio. Filtro, ordenação, paginação e os agregados dos painéis acontecem **no servidor** — os painéis descrevem o filtro inteiro, e a tabela mostra uma página dele. No desktop, a própria tabela rola dentro de uma caixa com altura limitada, e o cabeçalho de colunas fica preso no topo dela — não da página —, então nunca some por trás do que vem antes na tela. Uma parcela já lançada numa fatura futura ganha o rótulo **futura** ao lado da data: a ordenação por data continua correta, mas o topo da lista deixa de parecer "a compra mais recente" por engano. |
@@ -98,11 +105,17 @@ explícito, o front pelo `envDir` do Vite). Copie de [`.env.example`](.env.examp
 | `AUTH_PASSWORD_HASH` | api | — | Hash bcrypt da senha — nunca a senha em texto puro. Gerado por `pnpm --filter @expense/api hash-password`. **Segredo.** |
 | `SESSION_SECRET` | api | — | Assina o cookie de sessão. String aleatória longa; trocar derruba toda sessão aberta. **Segredo.** |
 | `VITE_API_URL` | web | `http://localhost:3000` | Base da API usada pelo front. Precisa do prefixo `VITE_` pra chegar no bundle. |
-| `EXTRACTOR_SOURCE` | extractor | `drive` | De onde vêm as faturas: `drive` (Google Drive) ou `local` (pasta). |
-| `BILLS_DIR` | extractor | `./bills` | Fonte `local`: diretório com os CSVs. |
-| `DRIVE_FILE_QUERY` | extractor | `name contains 'nubank'` | Fonte `drive`: filtro de busca (sintaxe da Drive API v3). |
-| `GOOGLE_CREDENTIALS_PATH` | extractor | `./apps/extractor/drive-credentials.json` | Fonte `drive`: OAuth client baixado do Google Cloud Console. **Segredo.** |
-| `GOOGLE_TOKEN_PATH` | extractor | `./apps/extractor/token.json` | Fonte `drive`: refresh token gerado no primeiro login. **Segredo.** |
+| `EXTRACTOR_SOURCE` | extractor, api | `drive` | De onde vêm as faturas: `drive` (Google Drive) ou `local` (pasta). |
+| `BILLS_DIR` | extractor, api | `./bills` | Fonte `local`: diretório com os CSVs. |
+| `DRIVE_FILE_QUERY` | extractor, api | `name contains 'nubank'` | Fonte `drive`: filtro de busca (sintaxe da Drive API v3). |
+| `GOOGLE_CREDENTIALS_PATH` | extractor, api | `./apps/extractor/drive-credentials.json` | Fonte `drive`: OAuth client baixado do Google Cloud Console. **Segredo.** |
+| `GOOGLE_TOKEN_PATH` | extractor, api | `./apps/extractor/token.json` | Fonte `drive`: refresh token gerado no primeiro login. **Segredo.** |
+
+As cinco de baixo valem para os dois porque o botão **Sincronizar** faz a API rodar a mesma ingestão
+que o `pnpm extract` — [detalhes](#quando-as-faturas-novas-entram). Elas precisam ter o mesmo valor
+nos dois lados, ou o botão sincronizaria de uma fonte e o cron de outra; em produção isso é garantido
+por um `.env.prod` único, lido pelos dois serviços. A API só **lê** o `token.json`; quem o cria é o
+`pnpm extract`.
 
 `.env`, `drive-credentials.json` e `token.json` estão no `.gitignore` — nenhum deles vai pro
 repositório.
@@ -183,6 +196,48 @@ pnpm extract
 
 O último passo é o mesmo código que a API roda quando você cria ou apaga uma regra na tela, então as
 duas rotas não têm como divergir.
+
+### Quando as faturas novas entram
+
+Nunca sozinhas: **a app não fica de olho na fonte**. Baixar uma fatura no Drive não muda nada até
+alguém pedir a ingestão, e há três formas de pedir.
+
+| Gatilho | Como | Quando usar |
+| --- | --- | --- |
+| **Botão Sincronizar** | No cabeçalho da app, em qualquer tela | Você acabou de colocar uma fatura na fonte e quer vê-la agora |
+| **`pnpm extract`** | Linha de comando | Desenvolvimento, ou a primeira execução — é ela que gera o `token.json` do Drive |
+| **Cron da VPS** | `docker compose -f docker-compose.prod.yml run --rm extractor` num timer | Deixar a base em dia sem depender de lembrar |
+
+Os três rodam **o mesmo código** — `@expense/ingestion` — e gravam o mesmo registro de execução, na
+coleção `syncRuns`. É por isso que a tela mostra "sincronizado há 3 h" mesmo quando quem sincronizou
+foi o cron às 07:00: se cada gatilho tivesse o seu próprio rastro, uma extração automática apareceria
+como "nunca sincronizado" e o botão viraria um convite a refazer trabalho já feito.
+
+O que o botão faz por dentro:
+
+```
+POST /sync                    ← responde 202 na hora, sem esperar a extração
+  └─ em segundo plano: lê as faturas, regrava mês a mês, reaplica as regras
+       └─ grava o desfecho em `syncRuns`   ← status, contagens, e o relato linha a linha
+GET /sync                     ← a tela pergunta de 2 em 2 segundos enquanto roda
+```
+
+A resposta sai antes de a extração terminar de propósito: ler 95 faturas do Drive passa de um minuto,
+e segurar a conexão por esse tempo entregaria a decisão a um timeout de proxy — a extração continuaria
+rodando e o navegador mostraria erro. Um segundo pedido enquanto o primeiro roda recebe **409**.
+
+Três detalhes que valem saber:
+
+- **A tela não recarrega sozinha no fim.** O popover oferece "Atualizar a tela" e espera você clicar:
+  as telas guardam o próprio estado, e um recarregamento automático no meio da tela *Sem categoria*
+  jogaria fora a regra que você estava montando.
+- **O consentimento do Google não acontece pela API.** Ela lê o `token.json`, nunca o cria — não há
+  navegador para abrir num container. Sem o token, a sincronização falha na hora com o texto dizendo
+  para rodar `pnpm extract` uma vez numa máquina com navegador e copiar o arquivo. Antes disso ser
+  explícito, a requisição ficava pendurada até o timeout sem dizer por quê.
+- **Uma execução que morreu no meio destrava sozinha.** O registro em `running` é o que barra a
+  segunda ingestão; passados 30 minutos ele é dado como interrompido na próxima leitura, senão um
+  container derrubado deixaria o botão travado até alguém editar o banco na mão.
 
 ---
 
@@ -428,26 +483,37 @@ Monorepo **pnpm workspaces + Turborepo**, TypeScript em tudo.
 
 ```
 apps/
-  api/         @expense/api             NestJS + Mongoose — endpoints e agregações
+  api/         @expense/api             NestJS + Mongoose — endpoints, agregações e POST /sync
   web/         @expense/web             React + Vite + shadcn/ui — tabelas e gráficos
-  extractor/   @expense/extractor       CSV (Drive ou disco) → MongoDB
+  extractor/   @expense/extractor       o comando de terminal: .env, conexão e saída no console
 packages/
   categorization/ @expense/categorization  a escada de precedência, pura e testada
+  ingestion/      @expense/ingestion       ler as faturas (Drive ou disco) e gravá-las
 bills/                                     seus CSVs quando EXTRACTOR_SOURCE=local
 docker-compose.yml                         MongoDB local (+ mongo-express opcional)
 ```
 
-O pacote existe porque a mesma decisão — qual título vai para qual categoria — precisa acontecer em
-dois lugares: na API, quando você mexe numa regra, e no extractor, depois de reprocessar. Duas
-implementações da mesma precedência divergiriam, e o sintoma apareceria meses depois como uma
-categoria que muda sozinha ao rodar `pnpm extract`. Os dois lados implementam só o acesso ao banco,
-por trás da mesma interface.
+Os dois pacotes existem pelo mesmo motivo, e é o motivo de o extractor ser tão fino: **a mesma coisa
+acontece em dois processos**, e duas implementações dela divergiriam.
+
+- **`categorization`** guarda a decisão de qual título vai para qual categoria. Ela roda na API,
+  quando você mexe numa regra, e na ingestão, depois de regravar. Duas cópias da precedência
+  divergiriam, e o sintoma apareceria meses depois como uma categoria que muda sozinha ao
+  sincronizar.
+- **`ingestion`** guarda a leitura das faturas e a ordem das operações de uma ingestão — apaga o mês,
+  grava, backfill, reaplica. Ela roda no `pnpm extract` e no `POST /sync`. Aqui a divergência seria
+  pior que uma categoria errada: uma das duas pontas esquecendo a reaplicação no fim significaria que
+  sincronizar por aquele caminho **desfaz** a classificação manual.
+
+Nos dois casos o acesso ao banco fica de fora do pacote, por trás de uma interface — `PurchaseStore` e
+`BillStore`. O extractor as implementa no driver cru do MongoDB; a API, em Mongoose.
 
 | Camada | Tecnologia |
 | --- | --- |
 | **API** | NestJS 11, Mongoose 8, class-validator, Swagger |
 | **Front** | React 19, Vite 7, Tailwind CSS 4, shadcn/ui (Radix + lucide), Recharts, React Router 7 |
-| **Extractor** | Node + tsx, driver oficial do MongoDB 6, googleapis |
+| **Extractor** | Node + tsx, driver oficial do MongoDB 6 |
+| **Ingestão** | googleapis (Drive API v3) + OAuth de aplicativo instalado |
 | **Banco** | MongoDB 8 (Docker) ou MongoDB Atlas |
 | **Monorepo** | pnpm workspaces, Turborepo, ESLint 9 (flat config), Prettier |
 
@@ -730,6 +796,35 @@ de ser uma exceção rápida e vira algo que merece revisão título a título.
   perder a chance de rever depois — ela continua na resposta da API, marcada, e a tela guarda um
   atalho para desfazer.
 
+### `GET /sync` e `POST /sync`
+
+O estado da ingestão e o pedido de uma nova — [o fluxo inteiro](#quando-as-faturas-novas-entram).
+`POST` responde **202** ao aceitar o pedido, ou **409** se já houver uma em andamento.
+
+```json
+{
+  "running": false,
+  "lastRun": {
+    "trigger": "cli",              // "manual" é o botão; "cli", o pnpm extract e o cron
+    "status": "ok",                // running | ok | error
+    "startedAt": "2026-08-04T07:00:00.000Z",
+    "finishedAt": "2026-08-04T07:01:12.000Z",
+    "bills": 95,
+    "purchases": 5744,
+    "rules": 180,
+    "classified": 1620,
+    "restored": 0,
+    "financing": 12,
+    "log": ["Buscando as faturas no Google Drive...", "  2026-09: 61 compras"]
+  }
+}
+```
+
+O `log` é o mesmo relato que o `pnpm extract` imprime no terminal, guardado porque é a única pista
+dos casos que não são erro e não mudam contagem nenhuma: um arquivo ignorado por ter nome fora do
+padrão `<ano>-<mês>`, dois arquivos disputando o mesmo mês, linhas descartadas por valor ilegível. A
+tela mostra dele só as linhas de aviso.
+
 ### `GET /health`
 
 ```json
@@ -870,6 +965,15 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
 
 ## Estado atual
 
+- **Nada observa a fonte.** O botão **Sincronizar** tirou o `pnpm extract` por SSH do caminho, mas
+  não transformou a app num observador: uma fatura nova no Drive continua invisível até alguém pedir
+  a ingestão, no botão ou no cron. Não há webhook do Drive nem varredura periódica de dentro da API —
+  o agendamento fica com o sistema operacional da VPS, que é onde ele é fácil de ver e de desligar.
+  A tela ao menos passou a **dizer** quando foi a última vez, que era a metade que faltava: antes,
+  uma base parada e uma base em dia eram visualmente idênticas.
+- **A sincronização não avisa quando termina.** Quem clica e sai da tela não recebe nada — o
+  resultado fica no popover, esperando alguém abrir. Mesma decisão do aviso de reajuste, logo abaixo:
+  a API responde "o que aconteceu", e nenhum canal de push está embutido.
 - **A lista de encargo se corrige sem reextrair; as outras palavras-chave, não.** `POST
   /category-rule/reapply` aplica a lista de encargo de agora ao que já está no banco, nos dois
   sentidos — [como](#gasto-e-encargo-não-são-a-mesma-coisa). Já as palavras-chave que apenas repartem
