@@ -426,13 +426,14 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
 
 **Técnico**
 
-- **O cron das 07:00 UTC não está versionado — mas existe.** Conferido na VPS em 2026-08-05: está no
-  `crontab -l` do usuário `deploy`, chamando `~/bin/run-extractor.sh` por dentro do
-  `~/bin/com-alerta.sh`, que registra em `~/backups/extractor.log` e manda e-mail se falhar. O script
-  fixa a `IMAGE_TAG` pelo `~/.deploy-state/expense-analyzer` (para o cron não rodar uma imagem
-  diferente da implantada), tem `timeout 900` e distingue o código 124 de uma falha comum. Ou seja,
-  funciona e é melhor do que o comentário do compose sugere. O que continua aberto é só que **nada
-  disso vive no repositório**: recriar a VPS do zero significa reescrever esses arquivos de memória.
+- **A infra compartilhada da VPS continua fora do repositório.** Os dois jobs deste projeto — o
+  backup do Mongo às 06:00 e a extração às 07:00 — foram versionados em [`infra/`](infra/README.md),
+  com um instalador que gerencia só um bloco marcado do crontab. Mas eles dependem de
+  `~/bin/com-alerta.sh` (log + e-mail via Resend), `~/bin/enviar-r2.sh` (backup para o R2) e
+  `~/bin/deploy.sh` (alvo do forced command), que servem também `coda` e `kindred` e vivem **só** na
+  VPS. Versioná-los aqui poria a infra de outros projetos num repositório público onde ninguém que
+  mexe neles iria procurar; o lugar certo é um repo de infra próprio. Enquanto ele não existe,
+  recriar a máquina do zero ainda depende de reescrever esses três de memória.
 
 O aviso de **chunk acima de 500 kB** que estava anotado aqui não reproduz
 mais — build limpo, sem cache, conferido em 2026-07-29: o maior chunk (`index`) está em 423 kB e o
