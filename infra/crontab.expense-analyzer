@@ -1,0 +1,20 @@
+# As entradas de cron deste projeto na VPS. Instaladas por `infra/instalar.sh`,
+# que substitui o bloco inteiro entre as marcas — nunca edite o crontab da VPS à
+# mão para estas duas linhas, porque a próxima instalação sobrescreveria.
+#
+# O crontab da máquina serve quatro projetos. Este arquivo descreve SÓ os dois
+# jobs do expense-analyzer; as entradas de coda, kindred e as de backup de
+# segredos continuam vivendo apenas no crontab da VPS, e o instalador não
+# encosta nelas.
+#
+# Horários em UTC. Brasília é UTC−3.
+
+# Backup do Mongo às 06:00 UTC (03:00 de Brasília) — antes da extração, de
+# propósito: se uma extração corromper algo, o backup mais recente é sempre
+# anterior a ela.
+0 6 * * * /home/deploy/bin/com-alerta.sh /home/deploy/bin/backup-mongo.sh
+
+# Extração das faturas às 07:00 UTC. `LOG_ALERTA` manda o relato para um arquivo
+# próprio: ele é lido em outro momento e por outro motivo que o log dos backups
+# — é onde aparecem os avisos de mês duplicado e de linha descartada.
+0 7 * * * LOG_ALERTA=/home/deploy/backups/extractor.log /home/deploy/bin/com-alerta.sh /home/deploy/bin/run-extractor.sh
