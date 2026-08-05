@@ -1,9 +1,8 @@
 import type { CategoryRule, PurchaseStore } from '@expense/categorization';
 import { PAYMENT_CATEGORY } from '@expense/categorization';
+import type { Bill, BillStore, Purchase } from '@expense/ingestion';
 import { Collection, MongoClient } from 'mongodb';
 import { config } from './config';
-import { Bill } from './interfaces/bill';
-import { Purchase } from './interfaces/purchase';
 
 /** Uma regra como ela vive no banco. O `_id` não interessa à reaplicação. */
 type StoredRule = CategoryRule;
@@ -12,6 +11,31 @@ export interface Connection {
   client: MongoClient;
   purchases: Collection<Purchase>;
   rules: Collection<StoredRule>;
+  runs: Collection<SyncRunDocument>;
+}
+
+/**
+ * Uma execução da ingestão, como a API a grava e a tela a lê.
+ *
+ * O extractor escreve na mesma coleção de propósito: quem roda por cron e quem
+ * clica no botão fazem exatamente a mesma coisa com o banco, e a pergunta que a
+ * tela responde — "quando isto foi atualizado pela última vez?" — não tem por que
+ * saber qual dos dois foi. Sem isto, uma extração pelo cron deixaria a tela
+ * mostrando a sincronização manual de três dias atrás como a mais recente.
+ */
+export interface SyncRunDocument {
+  /** `manual` é o botão da tela; `cli` é o `pnpm extract` e o cron da VPS. */
+  trigger: 'manual' | 'cli';
+  status: 'running' | 'ok' | 'error';
+  startedAt: Date;
+  finishedAt?: Date;
+  bills?: number;
+  purchases?: number;
+  classified?: number;
+  restored?: number;
+  financing?: number;
+  message?: string;
+  log?: string[];
 }
 
 /**
@@ -26,6 +50,7 @@ export async function connect(): Promise<Connection> {
     client,
     purchases: db.collection<Purchase>('purchases'),
     rules: db.collection<StoredRule>('categoryRules'),
+    runs: db.collection<SyncRunDocument>('syncRuns'),
   };
 }
 
@@ -40,9 +65,6 @@ export async function connect(): Promise<Connection> {
 export async function writeBill(purchases: Collection<Purchase>, bill: Bill): Promise<void> {
   await purchases.deleteMany({ referenceMonth: bill.referenceMonth });
   if (bill.data.length > 0) await purchases.insertMany(bill.data);
-
-  const month = bill.referenceMonth.toISOString().slice(0, 7);
-  console.log(`  ${month}: ${bill.data.length} compras`);
 }
 
 /** As regras do usuário, para a reaplicação depois da gravação. */
@@ -98,5 +120,15 @@ export function createPurchaseStore(purchases: Collection<Purchase>): PurchaseSt
     async titlesWithSourceCategory(category) {
       return purchases.distinct('title', { sourceCategory: category });
     },
+  };
+}
+
+/** A ponta do `BillStore` que fala o driver cru — a API tem a sua, em Mongoose. */
+export function createBillStore(connection: Connection): BillStore {
+  return {
+    replaceMonth: (bill) => writeBill(connection.purchases, bill),
+    backfillSourceCategory: () => backfillSourceCategory(connection.purchases),
+    loadRules: () => loadRules(connection.rules),
+    purchases: createPurchaseStore(connection.purchases),
   };
 }

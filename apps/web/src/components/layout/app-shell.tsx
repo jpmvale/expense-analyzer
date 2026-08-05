@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { SyncButton } from '@/components/sync-button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -109,6 +110,7 @@ export function AppShell() {
           </nav>
 
           <div className="ml-auto flex items-center gap-1">
+            <SyncButton />
             <ThemeToggle />
             <Button variant="ghost" size="icon" aria-label="Sair" title="Sair" onClick={handleSignOut}>
               <LogOutIcon />

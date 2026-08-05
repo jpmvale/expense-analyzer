@@ -15,6 +15,7 @@ import {
   ConsolidationDismissalSchema,
 } from '../schemas/consolidation-dismissal.schema';
 import { Purchase, PurchaseDocument, PurchaseSchema } from '../schemas/purchase.schema';
+import { SyncRun, SyncRunDocument, SyncRunSchema } from '../schemas/sync-run.schema';
 import {
   Subscription,
   SubscriptionDocument,
@@ -44,6 +45,7 @@ export interface TestDb {
   rules: Model<CategoryRuleDocument>;
   dismissals: Model<ConsolidationDismissalDocument>;
   subscriptions: Model<SubscriptionDocument>;
+  runs: Model<SyncRunDocument>;
   /** Esvazia as coleções entre um teste e outro, sem derrubar o servidor. */
   clear(): Promise<void>;
   stop(): Promise<void>;
@@ -81,6 +83,7 @@ export async function startTestDb(): Promise<TestDb> {
     Subscription.name,
     SubscriptionSchema,
   );
+  const runs = modelFor<SyncRunDocument>(connection, SyncRun.name, SyncRunSchema);
 
   // O índice único de (kind, value) é parte do contrato da coleção de regras, e
   // o Mongoose só o cria em segundo plano — sem esperar, o primeiro teste que
@@ -91,6 +94,7 @@ export async function startTestDb(): Promise<TestDb> {
     rules.init(),
     dismissals.init(),
     subscriptions.init(),
+    runs.init(),
   ]);
 
   return {
@@ -99,6 +103,7 @@ export async function startTestDb(): Promise<TestDb> {
     rules,
     dismissals,
     subscriptions,
+    runs,
     async clear() {
       await Promise.all([
         purchases.deleteMany({}),
@@ -106,6 +111,7 @@ export async function startTestDb(): Promise<TestDb> {
         rules.deleteMany({}),
         dismissals.deleteMany({}),
         subscriptions.deleteMany({}),
+        runs.deleteMany({}),
       ]);
     },
     async stop() {

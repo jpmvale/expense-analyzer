@@ -1,3 +1,5 @@
+import { IngestionLogger } from '../logger';
+
 /**
  * Avisa quando um arquivo teve linhas descartadas.
  *
@@ -7,11 +9,15 @@
  * o sintoma visível era uma coluna vazia na tela, a três camadas de distância da
  * causa. Uma linha ou duas por arquivo é o normal; um punhado merece um olhar.
  */
-export function warnDiscarded(fileName: string, discarded: number): void {
+export function warnDiscarded(
+  fileName: string,
+  discarded: number,
+  logger: IngestionLogger,
+): void {
   if (discarded === 0) return;
 
-  console.warn(
-    `  ${fileName}: ${discarded} ${discarded === 1 ? 'linha ignorada' : 'linhas ignoradas'} ` +
+  logger.warn(
+    `${fileName}: ${discarded} ${discarded === 1 ? 'linha ignorada' : 'linhas ignoradas'} ` +
       '(sem título, data ou valor legível).',
   );
 }

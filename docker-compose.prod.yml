@@ -50,6 +50,19 @@ services:
       # cross-origin nenhuma para liberar. Deixar vazio aqui seria pior que
       # inútil: a API interpreta vazio como "libera qualquer origem".
       CORS_ORIGIN: https://expenses.imp-software.cloud
+      # As mesmas variáveis do extractor, porque a API passou a fazer a mesma
+      # ingestão quando alguém clica em "Sincronizar" na tela. Ter as duas lendo
+      # do mesmo `.env.prod` é o que impede o botão de sincronizar de uma fonte e
+      # o cron de outra.
+      GOOGLE_CREDENTIALS_PATH: /secrets/drive-credentials.json
+      GOOGLE_TOKEN_PATH: /secrets/token.json
+    volumes:
+      # O `token.json` é montado GRAVÁVEL também aqui: a biblioteca do Google
+      # reescreve o arquivo ao renovar o access token expirado, e montá-lo `:ro`
+      # faria a primeira sincronização depois da expiração falhar com um erro de
+      # escrita — que não tem nada a ver com a causa e é péssimo de diagnosticar.
+      - ./secrets/drive-credentials.json:/secrets/drive-credentials.json:ro
+      - ./secrets/token.json:/secrets/token.json
     networks:
       - internal
       - edge

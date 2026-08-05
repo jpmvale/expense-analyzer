@@ -1,8 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { authenticate } from '@google-cloud/local-auth';
 import { google } from 'googleapis';
-import { config } from '../config';
+import { IngestionConfig } from '../config';
 import { Bill } from '../interfaces/bill';
+import { IngestionLogger } from '../logger';
 import { CategoryMemory, parseBillCsv, referenceMonthFromFileName } from '../parseBillCsv';
 import { excludeTrashed } from './driveQuery';
 import { warnDiscarded } from './warnDiscarded';
@@ -10,7 +11,7 @@ import { warnDiscarded } from './warnDiscarded';
 const SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
 
 /** Reaproveita o refresh token salvo, evitando abrir o navegador toda execução. */
-async function loadSavedCredentials() {
+async function loadSavedCredentials(config: IngestionConfig) {
   try {
     const content = await readFile(config.googleTokenPath, 'utf-8');
     return google.auth.fromJSON(JSON.parse(content));
@@ -19,7 +20,10 @@ async function loadSavedCredentials() {
   }
 }
 
-async function saveCredentials(client: Awaited<ReturnType<typeof authenticate>>) {
+async function saveCredentials(
+  config: IngestionConfig,
+  client: Awaited<ReturnType<typeof authenticate>>,
+) {
   const content = await readFile(config.googleCredentialsPath, 'utf-8');
   const keys = JSON.parse(content);
   const key = keys.installed || keys.web;
@@ -34,9 +38,22 @@ async function saveCredentials(client: Awaited<ReturnType<typeof authenticate>>)
   );
 }
 
-async function authorize() {
-  const saved = await loadSavedCredentials();
+async function authorize(config: IngestionConfig) {
+  const saved = await loadSavedCredentials(config);
   if (saved) return saved;
+
+  // Quem chamou disse que não pode abrir navegador — a API, tipicamente. Sem
+  // isto, o `authenticate()` abaixo subiria um servidor local e ficaria
+  // esperando um consentimento que ninguém vai dar: a requisição HTTP penduraria
+  // até o timeout e a sincronização morreria sem explicação nenhuma.
+  if (!config.allowInteractiveAuth) {
+    throw new Error(
+      `Sem token do Google em ${config.googleTokenPath}, e este processo não pode ` +
+        'abrir o navegador para pedir o consentimento.\n' +
+        'Rode `pnpm extract` uma vez numa máquina com navegador para gerar o token, ' +
+        'e copie o arquivo para cá.',
+    );
+  }
 
   const client = await authenticate({
     scopes: SCOPES,
@@ -51,22 +68,25 @@ async function authorize() {
     );
   }
 
-  await saveCredentials(client);
+  await saveCredentials(config, client);
 
   // Relê o token recém-salvo em vez de devolver o cliente do `authenticate()`.
   // Aquele cliente não anexa a credencial nas chamadas do googleapis, então a
   // PRIMEIRA execução falhava com "Method doesn't allow unregistered callers"
   // logo depois de o usuário autorizar no navegador — e só funcionava a partir
   // da segunda, quando este mesmo caminho de token salvo passava a ser usado.
-  const reloaded = await loadSavedCredentials();
+  const reloaded = await loadSavedCredentials(config);
   if (!reloaded) {
     throw new Error(`Token salvo em ${config.googleTokenPath} mas não pôde ser lido de volta.`);
   }
   return reloaded;
 }
 
-export async function fetchBillsFromDrive(): Promise<Bill[]> {
-  const auth = await authorize();
+export async function fetchBillsFromDrive(
+  config: IngestionConfig,
+  logger: IngestionLogger,
+): Promise<Bill[]> {
+  const auth = await authorize(config);
   const drive = google.drive({ version: 'v3', auth: auth as never });
 
   const res = await drive.files.list({
@@ -78,7 +98,7 @@ export async function fetchBillsFromDrive(): Promise<Bill[]> {
 
   const files = res.data.files ?? [];
   if (files.length === 0) {
-    console.warn(`Nenhum arquivo no Drive bateu com o filtro: ${config.driveFileQuery}`);
+    logger.warn(`Nenhum arquivo no Drive bateu com o filtro: ${config.driveFileQuery}`);
     return [];
   }
 
@@ -94,7 +114,7 @@ export async function fetchBillsFromDrive(): Promise<Bill[]> {
 
       const referenceMonth = referenceMonthFromFileName(file.name);
       if (!referenceMonth) {
-        console.warn(`Ignorando "${file.name}": o nome não contém o padrão <ano>-<mês>.`);
+        logger.warn(`Ignorando "${file.name}": o nome não contém o padrão <ano>-<mês>.`);
         return [];
       }
 
@@ -108,7 +128,7 @@ export async function fetchBillsFromDrive(): Promise<Bill[]> {
   for (const { id, name, referenceMonth } of ordenados) {
     const raw = await drive.files.get({ fileId: id, alt: 'media' });
     const { purchases, discarded } = parseBillCsv(String(raw.data), referenceMonth, memory);
-    warnDiscarded(name, discarded);
+    warnDiscarded(name, discarded, logger);
     bills.push({ referenceMonth, data: purchases });
   }
 

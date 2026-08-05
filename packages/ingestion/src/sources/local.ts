@@ -1,7 +1,8 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { config } from '../config';
+import { IngestionConfig } from '../config';
 import { Bill } from '../interfaces/bill';
+import { IngestionLogger } from '../logger';
 import { CategoryMemory, parseBillCsv, referenceMonthFromFileName } from '../parseBillCsv';
 import { warnDiscarded } from './warnDiscarded';
 
@@ -9,7 +10,10 @@ import { warnDiscarded } from './warnDiscarded';
  * Lê as faturas de um diretório da máquina — útil pra quem baixa os CSVs
  * direto do app do Nubank e não quer configurar o Google Drive.
  */
-export async function fetchBillsFromDisk(): Promise<Bill[]> {
+export async function fetchBillsFromDisk(
+  config: IngestionConfig,
+  logger: IngestionLogger,
+): Promise<Bill[]> {
   let fileNames: string[];
   try {
     fileNames = (await readdir(config.billsDir)).filter((name) => name.endsWith('.csv')).sort();
@@ -21,7 +25,7 @@ export async function fetchBillsFromDisk(): Promise<Bill[]> {
   }
 
   if (fileNames.length === 0) {
-    console.warn(`Nenhum .csv em ${config.billsDir}`);
+    logger.warn(`Nenhum .csv em ${config.billsDir}`);
     return [];
   }
 
@@ -32,7 +36,7 @@ export async function fetchBillsFromDisk(): Promise<Bill[]> {
     .flatMap((fileName) => {
       const referenceMonth = referenceMonthFromFileName(fileName);
       if (!referenceMonth) {
-        console.warn(`Ignorando "${fileName}": o nome não contém o padrão <ano>-<mês>.`);
+        logger.warn(`Ignorando "${fileName}": o nome não contém o padrão <ano>-<mês>.`);
         return [];
       }
       return [{ fileName, referenceMonth }];
@@ -45,7 +49,7 @@ export async function fetchBillsFromDisk(): Promise<Bill[]> {
   for (const { fileName, referenceMonth } of ordenados) {
     const csv = await readFile(join(config.billsDir, fileName), 'utf-8');
     const { purchases, discarded } = parseBillCsv(csv, referenceMonth, memory);
-    warnDiscarded(fileName, discarded);
+    warnDiscarded(fileName, discarded, logger);
     bills.push({ referenceMonth, data: purchases });
   }
 

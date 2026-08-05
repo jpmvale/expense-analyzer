@@ -1,22 +1,23 @@
 {
-  "name": "@expense/extractor",
+  "name": "@expense/ingestion",
   "version": "1.0.0",
-  "description": "Lê as faturas em CSV (Google Drive ou pasta local) e grava as compras no MongoDB",
+  "description": "Lê as faturas em CSV (Google Drive ou pasta local) e as grava por um writer injetado",
   "private": true,
   "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
   "scripts": {
-    "start": "tsx src/main.ts",
-    "seed": "tsx src/seed.ts",
-    "reapply": "tsx src/reapply.ts",
     "build": "tsc -p tsconfig.build.json",
+    "test": "TZ=America/Sao_Paulo node --import tsx --test \"src/**/*.test.ts\"",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@expense/categorization": "workspace:*",
-    "@expense/ingestion": "workspace:*",
-    "dotenv": "^16.6.1",
-    "mongodb": "^6.19.0"
+    "@google-cloud/local-auth": "^3.0.1",
+    "google-auth-library": "^10.3.0",
+    "googleapis": "^160.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",

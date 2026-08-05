@@ -16,7 +16,8 @@ FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
 COPY packages/categorization/package.json packages/categorization/
-RUN pnpm install --frozen-lockfile --filter @expense/api... --filter @expense/categorization...
+COPY packages/ingestion/package.json packages/ingestion/
+RUN pnpm install --frozen-lockfile --filter @expense/api... --filter @expense/categorization... --filter @expense/ingestion...
 
 # ---------------------------------------------------------------------------
 # build — o turbo resolve o `^build`, então @expense/categorization compila
@@ -25,6 +26,7 @@ RUN pnpm install --frozen-lockfile --filter @expense/api... --filter @expense/ca
 FROM deps AS build
 COPY tsconfig.base.json turbo.json ./
 COPY packages/categorization packages/categorization
+COPY packages/ingestion packages/ingestion
 COPY apps/api apps/api
 RUN pnpm turbo run build --filter @expense/api
 
@@ -46,6 +48,11 @@ COPY --from=build --chown=node:node /app/package.json ./package.json
 COPY --from=build --chown=node:node /app/packages/categorization/dist ./packages/categorization/dist
 COPY --from=build --chown=node:node /app/packages/categorization/package.json ./packages/categorization/package.json
 COPY --from=build --chown=node:node /app/packages/categorization/node_modules ./packages/categorization/node_modules
+# A ingestão entrou no runtime da API quando o botão "Sincronizar" passou a
+# existir: é ela que fala com o Google Drive. Antes só o extractor a carregava.
+COPY --from=build --chown=node:node /app/packages/ingestion/dist ./packages/ingestion/dist
+COPY --from=build --chown=node:node /app/packages/ingestion/package.json ./packages/ingestion/package.json
+COPY --from=build --chown=node:node /app/packages/ingestion/node_modules ./packages/ingestion/node_modules
 COPY --from=build --chown=node:node /app/apps/api/dist ./apps/api/dist
 COPY --from=build --chown=node:node /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build --chown=node:node /app/apps/api/node_modules ./apps/api/node_modules
