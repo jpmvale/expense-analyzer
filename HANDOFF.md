@@ -426,11 +426,13 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
 
 **Técnico**
 
-- **O cron das 07:00 UTC existe só como comentário.** O `docker-compose.prod.yml` diz que quem roda
-  o extractor é "o cron das 07:00", mas não há crontab nem systemd timer no repositório e a esteira
-  não instala nenhum — se ele existe, foi criado à mão na VPS e ninguém sabe. Enquanto isso não for
-  versionado, o único gatilho garantido é o botão. Verificar com `crontab -l` na VPS antes de
-  assumir qualquer coisa.
+- **O cron das 07:00 UTC não está versionado — mas existe.** Conferido na VPS em 2026-08-05: está no
+  `crontab -l` do usuário `deploy`, chamando `~/bin/run-extractor.sh` por dentro do
+  `~/bin/com-alerta.sh`, que registra em `~/backups/extractor.log` e manda e-mail se falhar. O script
+  fixa a `IMAGE_TAG` pelo `~/.deploy-state/expense-analyzer` (para o cron não rodar uma imagem
+  diferente da implantada), tem `timeout 900` e distingue o código 124 de uma falha comum. Ou seja,
+  funciona e é melhor do que o comentário do compose sugere. O que continua aberto é só que **nada
+  disso vive no repositório**: recriar a VPS do zero significa reescrever esses arquivos de memória.
 
 O aviso de **chunk acima de 500 kB** que estava anotado aqui não reproduz
 mais — build limpo, sem cache, conferido em 2026-07-29: o maior chunk (`index`) está em 423 kB e o
@@ -444,6 +446,27 @@ sempre tivesse sido suficiente e a entrada ficou desatualizada.
 ## Armadilhas de ambiente
 
 Coisas que já custaram tempo nesta base.
+
+**O Drive aceita dois arquivos com o mesmo nome, e o mês perdedor some sem deixar buraco.**
+Aconteceu de verdade: em 2026-08-05 havia quatro arquivos em dois pares de nome idêntico —
+`Nubank_2026-08-03.csv` e `Nubank_2026-09-03.csv`, cada um em duas versões (27/07 e 03/08). Como
+cada fatura apaga o mês de referência antes de gravar, só o último lido sobrevive, e em setembro
+**o antigo ganhou**: a extração das 07:00 gravou `2026-09: 27 compras` e logo depois
+`2026-09: 4 compras`, deixando a produção com 4 lançamentos e R$ 512,10 num mês que tinha 27.
+
+O que torna isso traiçoeiro é não parecer defeito: o mês existe, a soma fecha com o que está lá, e
+nenhuma tela mostra "faltam 23 compras". O `warnDuplicateMonths` avisa desde antes — o aviso estava
+no log —, mas ninguém lê `~/backups/extractor.log` num dia em que o job termina com sucesso. Depois
+de `6f05e11` esses avisos aparecem no popover do botão Sincronizar, que é onde alguém olha.
+
+Ao investigar um mês com número estranho, o primeiro lugar é o log da extração, não o banco:
+
+```bash
+ssh vps 'grep -n "Atenção\|Ignorando" ~/backups/extractor.log'
+```
+
+A correção é sempre no Drive (apagar a versão velha), nunca no banco: a próxima extração regrava o
+mês inteiro e desfaria qualquer conserto feito à mão em `purchases`.
 
 **A API exige login desde `98370b2`, e você não vai ter a senha.** `.env` guarda
 `AUTH_PASSWORD_HASH` — um hash bcrypt, não reversível — não a senha em texto. Verificar uma feature
