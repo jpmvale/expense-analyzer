@@ -468,6 +468,25 @@ ssh vps 'grep -n "Atenção\|Ignorando" ~/backups/extractor.log'
 A correção é sempre no Drive (apagar a versão velha), nunca no banco: a próxima extração regrava o
 mês inteiro e desfaria qualquer conserto feito à mão em `purchases`.
 
+**E não escolha a versão pelo tamanho: uma fatura baixada logo depois do fechamento vem inchada.**
+Este é o detalhe que quase fez a limpeza parecer um estrago. Feitas as contas depois de apagar as
+versões de 27/07, agosto **encolheu** de 106 para 96 lançamentos — o arquivo mais velho era o maior,
+e à primeira vista parecia que apagar o errado tinha custado dez compras. Não tinha:
+
+```
+2026-08:  26/06 → 26/07   ciclo fechado, completo
+2026-09:  27/07 → 03/08   ciclo em aberto, até o dia do download
+```
+
+O arquivo de agosto de 27/07 foi baixado **um dia depois de o ciclo fechar** (a borda é 26→26) e
+ainda trazia dez lançamentos posteriores a 26/07, que o emissor mostrava na fatura corrente e que
+pertencem a setembro. O de 03/08 já os tinha movido para o lugar certo. A conta fecha: −10 em
+agosto, +23 em setembro, +13 no total da base.
+
+A regra prática, então: **a versão mais recente sempre ganha**, mesmo quando é a menor. E um mês que
+encolhe depois de apagar uma duplicata não é perda — antes de concluir isso, confira as bordas do
+ciclo com uma consulta no `referenceMonth`, que é onde a resposta aparece em duas linhas.
+
 **A API exige login desde `98370b2`, e você não vai ter a senha.** `.env` guarda
 `AUTH_PASSWORD_HASH` — um hash bcrypt, não reversível — não a senha em texto. Verificar uma feature
 clicando pela tela, ou por `curl` contra uma rota protegida, fica bloqueado até o dono digitar a
