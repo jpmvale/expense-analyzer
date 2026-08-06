@@ -36,6 +36,43 @@ pnpm dev               # API + front
 
 ---
 
+## ✅ FEITO (2026-08-06) — trocar e recuperar a senha
+
+O multiusuário subiu e deixou um buraco na hora: **não havia como trocar de senha**. Mudar a de
+alguém era gerar um hash na mão e editar o documento no Mongo — insustentável assim que a primeira
+pessoa escolhe uma senha descartável no cadastro.
+
+Duas portas, porque são dois problemas: `/conta` troca a senha de quem está logado (pedindo a
+atual), e `/esqueci` manda um link por e-mail. As duas **derrubam as outras sessões da conta** e
+poupam a de quem está trocando — sem isso, trocar a senha depois de ela vazar não expulsa ninguém.
+
+**As decisões que o código explica por extenso:**
+
+- O e-mail virou obrigatório no cadastro, mas é **opcional no schema**: as contas anteriores não têm
+  nenhum, e exigi-lo quebraria toda gravação nelas — inclusive a da própria troca de senha. O índice
+  é único **parcial**, senão as duas contas sem e-mail colidiriam entre si na subida.
+- O banco guarda o **SHA-256** do token, nunca o token. SHA e não bcrypt: o token já é aleatório de
+  alta entropia, não há dicionário para atacar, e o bcrypt trunca em 72 bytes.
+- `forgot-password` responde **204 sempre**. Qualquer diferença entre e-mail conhecido e desconhecido
+  vira um oráculo de quem tem conta aqui.
+- Sem `RESEND_API_KEY`, o `MailerService` **loga o link em vez de mandar**. É o que torna o fluxo
+  inteiro exercitável em desenvolvimento — e é assim que o `http.itest.ts` o percorre, interceptando
+  o envio para ler o token, que não existe em lugar nenhum do banco.
+- A queda das sessões conhece o formato do `connect-mongo` (JSON no campo `session`) e o comentário
+  em `session-store.ts` diz isso. A alternativa — `passwordChangedAt` conferido pelo guard — cobraria
+  uma consulta por requisição em todas as rotas para algo que acontece uma vez por ano.
+
+**Armadilha que custou um teste vermelho:** com `timestamps` no schema, o Mongoose **descarta
+`createdAt` de um `$set`** em silêncio. O update responde "ok", o campo não muda, e o teste falha
+adiante por um motivo sem relação. Envelhecer um documento em teste pede o driver cru
+(`Model.collection.updateMany`).
+
+**Em produção:** o `docker-compose.prod.yml` monta `/home/deploy/.config/alerta.env` no serviço
+`api` — a mesma chave do Resend que os alertas de cron já usam, num lugar só. As contas que existem
+hoje precisam de `set-email` para poderem recuperar a senha.
+
+---
+
 ## ✅ FEITO (2026-08-06) — multiusuário, cadastro por convite e importação de CSV
 
 O app era de um usuário só, e isso estava no **código**, não na configuração: as credenciais moravam

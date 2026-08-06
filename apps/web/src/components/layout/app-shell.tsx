@@ -8,6 +8,7 @@ import {
   RepeatIcon,
   TagsIcon,
   UploadIcon,
+  UserIcon,
   WalletIcon,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
@@ -118,6 +119,11 @@ export function AppShell() {
                 pior que botão nenhum — elas usam a tela de Importar. */}
             {isOwner && <SyncButton />}
             <ThemeToggle />
+            <Button variant="ghost" size="icon" aria-label="Conta" title="Conta" asChild>
+              <NavLink to="/conta">
+                <UserIcon />
+              </NavLink>
+            </Button>
             <Button variant="ghost" size="icon" aria-label="Sair" title="Sair" onClick={handleSignOut}>
               <LogOutIcon />
             </Button>

@@ -115,6 +115,8 @@ explícito, o front pelo `envDir` do Vite). Copie de [`.env.example`](.env.examp
 | `AUTH_PASSWORD_HASH` | migração | — | Idem: o hash bcrypt que a conta dona herda, para o login não mudar. Gerado por `pnpm --filter @expense/api hash-password`. **Segredo.** |
 | `SESSION_SECRET` | api | — | Assina o cookie de sessão. String aleatória longa; trocar derruba toda sessão aberta. **Segredo.** |
 | `VITE_API_URL` | web | `http://localhost:3000` | Base da API usada pelo front. Precisa do prefixo `VITE_` pra chegar no bundle. |
+| `APP_URL` | api | `http://localhost:5173` | Endereço em que a **pessoa** abre o app — é a base do link de redefinição de senha, e não a URL da API. |
+| `MAIL_ENV_FILE` | api | — | Arquivo com `RESEND_API_KEY` e `EMAIL_FROM`, lido na subida. Sem ele o link de redefinição vai para o **log** em vez do e-mail — veja [Contas](#contas). |
 | `EXTRACTOR_SOURCE` | extractor, api | `drive` | De onde vêm as faturas: `drive` (Google Drive) ou `local` (pasta). |
 | `BILLS_DIR` | extractor, api | `./bills` | Fonte `local`: diretório com os CSVs. |
 | `DRIVE_FILE_QUERY` | extractor, api | `name contains 'nubank'` | Fonte `drive`: filtro de busca (sintaxe da Drive API v3). |
@@ -154,6 +156,37 @@ Além dele, gere um `SESSION_SECRET` (`openssl rand -hex 32`). A sessão é um c
 guardado no próprio Mongo (`connect-mongo`, coleção `sessions`) — e não em memória, porque a API sobe
 com `nest start --watch`: cada salvamento reiniciaria o processo, e uma sessão em memória cairia
 junto. Toda rota exige sessão, exceto `/auth/register`, `/auth/login`, `/auth/session` e `/health`.
+
+### Senha: trocar e recuperar
+
+Duas portas, porque são dois problemas diferentes:
+
+- **Trocar** (`/conta`, logado): pede a senha atual antes da nova. Não é burocracia — sem isso, um
+  notebook desbloqueado por dois minutos basta para trocar a senha e expulsar o dono da própria
+  conta, já que a sessão sozinha seria autorização suficiente.
+- **Recuperar** (`/esqueci`): manda um link por e-mail, válido por uma hora e de uso único.
+
+As duas **derrubam as outras sessões da conta** — a de quem está trocando continua. É a metade que
+faz a troca significar alguma coisa: sem ela, quem já estava dentro com a senha antiga continua
+dentro, e trocar a senha depois de ela vazar é teatro.
+
+O que o servidor guarda de um pedido de redefinição é o **SHA-256 do token**, nunca o token: o que
+vai no link são 32 bytes aleatórios, e um dump do banco — ou um backup no R2 — não abre a conta de
+ninguém. `POST /auth/forgot-password` responde **204 sempre**, exista ou não a conta; uma resposta
+diferente para endereço conhecido e desconhecido transformaria a rota num oráculo de quem tem conta
+aqui. É por isso que a tela diz "se houver uma conta com esse e-mail" em vez de confirmar.
+
+O envio é pelo Resend, com as credenciais em `MAIL_ENV_FILE` — em produção, o mesmo arquivo que os
+alertas de cron da VPS já usam, montado no container em vez de copiado para o `.env.prod`. **Sem
+credencial configurada nada quebra:** o link é escrito no log da API. É o que mantém o fluxo inteiro
+exercitável em desenvolvimento, e é assim que os testes o percorrem.
+
+Contas criadas antes do campo de e-mail não têm endereço e não podem ser recuperadas — a tela de
+conta avisa. Para dar um endereço a elas:
+
+```bash
+pnpm --filter @expense/api set-email <usuario> <email>
+```
 
 `GET /auth/session` responde quem está logado e se essa conta é a **dona da instância**
 (`OWNER_USERNAME`). Só ela vê o botão **Sincronizar**, e só para ela `/sync` responde: a
@@ -621,8 +654,15 @@ existem só como string nas compras e continuam valendo. Esta coleção guarda a
 **antes** de qualquer compra usá-las — sem ela não daria para criar "mercado livre" e classificar em
 seguida. `GET /category` devolve a união das duas.
 
-**`users`** — uma linha por conta: `username` (único, em minúsculas) e `passwordHash` (bcrypt, custo
-12). A senha em texto puro não é gravada em lugar nenhum.
+**`users`** — uma linha por conta: `username` e `email` (únicos, em minúsculas) e `passwordHash`
+(bcrypt, custo 12). A senha em texto puro não é gravada em lugar nenhum. O índice de `email` é
+**parcial** (`{ email: { $exists: true } }`), senão as contas anteriores ao campo colidiriam entre si
+— para um índice único comum, dois documentos sem o campo valem ambos como `null`.
+
+**`passwordResets`** — um pedido de redefinição em aberto: `userId`, `tokenHash`, `expiresAt` e
+`usedAt`. O token não mora aqui; veja [Senha](#senha-trocar-e-recuperar). Um índice TTL apaga os
+documentos um dia depois de expirarem — faxina, não segurança: a expiração que vale é conferida na
+leitura, porque o TTL do Mongo roda de minuto em minuto.
 
 **Todas as coleções de dados carregam `userId`** — `purchases`, `categoryRules`, `categories`,
 `subscriptions`, `consolidationDismissals` e `syncRuns`. Os índices únicos são **compostos com ele**:
@@ -958,6 +998,7 @@ Todos rodam da raiz do repositório.
 | `pnpm extract` | Roda o extractor com as suas faturas de verdade |
 | `pnpm reapply` | Reaplica regras e encargos sobre a base já gravada, sem reextrair — veja abaixo |
 | `pnpm --filter @expense/api migrate:multiuser` | Uma vez só, vindo da versão de usuário único: cria a conta dona e dá dono aos dados que não têm — [detalhes](#vindo-da-versão-de-um-usuário-só) |
+| `pnpm --filter @expense/api set-email <usuario> <email>` | Dá endereço a uma conta criada antes de o e-mail existir, para ela poder recuperar a senha |
 
 Para inspecionar o banco pelo navegador: `docker compose --profile tools up -d` → http://localhost:8081.
 
@@ -1083,8 +1124,14 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
 
 - **O multiusuário é de dados, não de administração.** Cada conta é uma ilha: não há papéis, nem
   compartilhamento entre contas, nem tela para listar, renomear ou apagar usuários — isso se faz no
-  banco. Trocar de senha também não tem tela. O único privilégio que existe é `OWNER_USERNAME`, e ele
-  vale para uma coisa só: disparar a sincronização com o Drive.
+  banco. O único privilégio que existe é `OWNER_USERNAME`, e ele vale para uma coisa só: disparar a
+  sincronização com o Drive.
+- **A senha se troca e se recupera; o e-mail, não.** `/conta` troca a senha e `/esqueci` recupera a
+  conta, mas mudar o **endereço** de uma conta continua sendo `set-email` na linha de comando. Uma
+  tela para isso precisaria confirmar o endereço novo por e-mail antes de trocar — senão um erro de
+  digitação tranca a recuperação da conta em silêncio —, e esse é um segundo fluxo inteiro.
+- **Um convite só, que não expira.** Revogá-lo é trocar `INVITE_CODE` e reiniciar a API, o que não
+  derruba quem já entrou. Não há convite por pessoa nem por prazo.
 - **O Drive continua sendo de uma conta Google só.** As credenciais OAuth moram no servidor e são do
   dono da instância; as demais contas importam CSV pela tela. Um Drive por usuário exigiria tela de
   consentimento, token por conta e refresh, e não é o que esta versão se propõe a fazer.

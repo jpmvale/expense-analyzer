@@ -1,6 +1,6 @@
 import { AlertCircleIcon, WalletIcon } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
-import { useLocation, useNavigate, type Location } from 'react-router-dom';
+import { Link, useLocation, useNavigate, type Location } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,7 @@ function Login() {
 
   const [mode, setMode] = useState<Mode>('entrar');
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +40,7 @@ function Login() {
     setBusy(true);
     try {
       if (criando) {
-        await signUp(username, password, inviteCode);
+        await signUp(username, email, password, inviteCode);
       } else {
         await signIn(username, password);
       }
@@ -96,6 +97,25 @@ function Login() {
             />
           </div>
 
+          {criando && (
+            <div className="space-y-1.5">
+              <label htmlFor="email" className="text-sm font-medium">
+                E-mail
+              </label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                É por ele que dá para recuperar a conta se você esquecer a senha.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <label htmlFor="password" className="text-sm font-medium">
               Senha
@@ -135,6 +155,14 @@ function Login() {
             {busy ? (criando ? 'Criando…' : 'Entrando…') : criando ? 'Criar conta' : 'Entrar'}
           </Button>
         </form>
+
+        {!criando && (
+          <p className="pt-3 text-center text-sm">
+            <Link to="/esqueci" className="text-muted-foreground underline">
+              Esqueci minha senha
+            </Link>
+          </p>
+        )}
 
         <p className="pt-4 text-center text-sm text-muted-foreground">
           {criando ? 'Já tem conta?' : 'Ainda não tem conta?'}{' '}
