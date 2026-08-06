@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { purchase, startTestDb, type TestDb } from '../testing/mongo';
+import { purchase, startTestDb, USUARIO, type TestDb } from '../testing/mongo';
 import { CategoryService } from './category.service';
 
 /** A mensagem da exceção, que é o que a tela mostra ao usuário. */
@@ -28,9 +28,9 @@ describe('CategoryService', () => {
   describe('listCategories', () => {
     it('une o que veio da fatura com o que o usuário criou', async () => {
       await db.purchases.create([purchase('Uber', 'transporte')]);
-      await db.categories.create({ name: 'viagem' });
+      await db.categories.create({ userId: USUARIO, name: 'viagem' });
 
-      assert.deepEqual(await service.listCategories(), [
+      assert.deepEqual(await service.listCategories(USUARIO), [
         { name: 'transporte', purchaseCount: 1 },
         { name: 'viagem', purchaseCount: 0 },
       ]);
@@ -43,7 +43,7 @@ describe('CategoryService', () => {
       ]);
 
       assert.deepEqual(
-        (await service.listCategories()).map((c) => c.name),
+        (await service.listCategories(USUARIO)).map((c) => c.name),
         ['transporte'],
       );
     });
@@ -51,28 +51,36 @@ describe('CategoryService', () => {
 
   describe('createCategory', () => {
     it('recusa nome já existente, ainda que com outra caixa ou acento', async () => {
-      await db.categories.create({ name: 'Saúde' });
+      await db.categories.create({ userId: USUARIO, name: 'Saúde' });
 
-      const erro = await recusa(service.createCategory({ name: 'saude' }));
+      const erro = await recusa(service.createCategory(USUARIO, { name: 'saude' }));
       assert.match(erro, /"Saúde" já existe/);
     });
 
     it('recusa o pagamento da fatura como categoria', async () => {
-      const erro = await recusa(service.createCategory({ name: 'payment' }));
+      const erro = await recusa(service.createCategory(USUARIO, { name: 'payment' }));
       assert.match(erro, /pagamento da fatura/);
     });
 
     it('recusa nome vazio', async () => {
-      assert.match(await recusa(service.createCategory({ name: '   ' })), /precisa de um nome/);
+      assert.match(
+        await recusa(service.createCategory(USUARIO, { name: '   ' })),
+        /precisa de um nome/,
+      );
     });
   });
 
   describe('renameCategory', () => {
     it('renomeia as compras, a origem e as regras que apontavam para o nome antigo', async () => {
       await db.purchases.create([purchase('Uber', 'transporte')]);
-      await db.rules.create({ kind: 'exact', value: 'Uber', category: 'transporte' });
+      await db.rules.create({
+        userId: USUARIO,
+        kind: 'exact',
+        value: 'Uber',
+        category: 'transporte',
+      });
 
-      await service.renameCategory('transporte', { name: 'mobilidade' });
+      await service.renameCategory(USUARIO, 'transporte', { name: 'mobilidade' });
 
       const compra = await db.purchases.findOne().exec();
       // As duas pontas: mexer só em `category` faria a próxima reaplicação ler a
@@ -83,12 +91,9 @@ describe('CategoryService', () => {
     });
 
     it('mescla quando o destino já existe, somando as compras', async () => {
-      await db.purchases.create([
-        purchase('Uber', 'transporte'),
-        purchase('99app', 'mobilidade'),
-      ]);
+      await db.purchases.create([purchase('Uber', 'transporte'), purchase('99app', 'mobilidade')]);
 
-      const resultado = await service.renameCategory('transporte', { name: 'mobilidade' });
+      const resultado = await service.renameCategory(USUARIO, 'transporte', { name: 'mobilidade' });
 
       assert.deepEqual(resultado, { name: 'mobilidade', purchaseCount: 2 });
       assert.equal(await db.purchases.countDocuments({ category: 'transporte' }), 0);
@@ -99,28 +104,31 @@ describe('CategoryService', () => {
     it('trata troca de caixa como renomeação de verdade', async () => {
       await db.purchases.create([purchase('Ikea', 'casa')]);
 
-      await service.renameCategory('casa', { name: 'Casa' });
+      await service.renameCategory(USUARIO, 'casa', { name: 'Casa' });
 
       assert.equal((await db.purchases.findOne().exec())?.category, 'Casa');
     });
 
     it('não deixa registro órfão do nome antigo', async () => {
-      await db.categories.create({ name: 'casa' });
+      await db.categories.create({ userId: USUARIO, name: 'casa' });
 
-      await service.renameCategory('casa', { name: 'lar' });
+      await service.renameCategory(USUARIO, 'casa', { name: 'lar' });
 
       assert.equal(await db.categories.countDocuments({ name: 'casa' }), 0);
       assert.equal(await db.categories.countDocuments({ name: 'lar' }), 1);
     });
 
     it('recusa categoria que não existe', async () => {
-      assert.match(await recusa(service.renameCategory('fantasma', { name: 'x' })), /não encontrada/);
+      assert.match(
+        await recusa(service.renameCategory(USUARIO, 'fantasma', { name: 'x' })),
+        /não encontrada/,
+      );
     });
 
     it('recusa renomear o pagamento da fatura', async () => {
       await db.purchases.create([purchase('Pagamento recebido', 'payment')]);
       assert.match(
-        await recusa(service.renameCategory('payment', { name: 'renda' })),
+        await recusa(service.renameCategory(USUARIO, 'payment', { name: 'renda' })),
         /não é uma categoria renomeável/,
       );
     });
@@ -128,24 +136,24 @@ describe('CategoryService', () => {
 
   describe('deleteCategory', () => {
     it('recusa apagar categoria em uso e diz quantas compras a seguram', async () => {
-      await db.categories.create({ name: 'casa' });
+      await db.categories.create({ userId: USUARIO, name: 'casa' });
       await db.purchases.create([purchase('Ikea', 'casa'), purchase('Leroy', 'casa')]);
 
-      const erro = await recusa(service.deleteCategory('casa'));
+      const erro = await recusa(service.deleteCategory(USUARIO, 'casa'));
       assert.match(erro, /tem 2 compras/);
       assert.equal(await db.categories.countDocuments({ name: 'casa' }), 1);
     });
 
     it('recusa apagar categoria que ainda é destino de regra', async () => {
-      await db.categories.create({ name: 'casa' });
-      await db.rules.create({ kind: 'exact', value: 'Ikea', category: 'casa' });
+      await db.categories.create({ userId: USUARIO, name: 'casa' });
+      await db.rules.create({ userId: USUARIO, kind: 'exact', value: 'Ikea', category: 'casa' });
 
-      assert.match(await recusa(service.deleteCategory('casa')), /destino de 1 regras/);
+      assert.match(await recusa(service.deleteCategory(USUARIO, 'casa')), /destino de 1 regras/);
     });
 
     it('apaga a que não está em uso', async () => {
-      await db.categories.create({ name: 'casa' });
-      await service.deleteCategory('casa');
+      await db.categories.create({ userId: USUARIO, name: 'casa' });
+      await service.deleteCategory(USUARIO, 'casa');
       assert.equal(await db.categories.countDocuments(), 0);
     });
   });
@@ -154,7 +162,7 @@ describe('CategoryService', () => {
     it('classifica as compras do título e devolve quantas mudaram', async () => {
       await db.purchases.create([purchase('Ikea', 'outros'), purchase('Ikea', 'outros')]);
 
-      const { classified } = await service.upsertRule({
+      const { classified } = await service.upsertRule(USUARIO, {
         kind: 'exact',
         value: 'Ikea',
         category: 'casa',
@@ -169,9 +177,9 @@ describe('CategoryService', () => {
     it('edita a regra existente em vez de empilhar uma segunda', async () => {
       await db.purchases.create([purchase('IKEA', 'outros')]);
 
-      await service.upsertRule({ kind: 'exact', value: 'IKEA', category: 'casa' });
+      await service.upsertRule(USUARIO, { kind: 'exact', value: 'IKEA', category: 'casa' });
       // Mesmo valor com outra caixa: é a mesma regra.
-      await service.upsertRule({ kind: 'exact', value: 'ikea', category: 'móveis' });
+      await service.upsertRule(USUARIO, { kind: 'exact', value: 'ikea', category: 'móveis' });
 
       assert.equal(await db.rules.countDocuments(), 1);
       assert.equal((await db.rules.findOne().exec())?.category, 'móveis');
@@ -179,13 +187,13 @@ describe('CategoryService', () => {
     });
 
     it('faz a categoria da regra existir antes de qualquer compra cair nela', async () => {
-      await service.upsertRule({ kind: 'contains', value: 'zzz', category: 'inédita' });
+      await service.upsertRule(USUARIO, { kind: 'contains', value: 'zzz', category: 'inédita' });
       assert.equal(await db.categories.countDocuments({ name: 'inédita' }), 1);
     });
 
     it('recusa regra apontando para o pagamento da fatura', async () => {
       const erro = await recusa(
-        service.upsertRule({ kind: 'exact', value: 'Uber', category: 'payment' }),
+        service.upsertRule(USUARIO, { kind: 'exact', value: 'Uber', category: 'payment' }),
       );
       assert.match(erro, /somaria a fatura ao gasto/);
     });
@@ -194,13 +202,13 @@ describe('CategoryService', () => {
   describe('editRule', () => {
     it('muda o trecho mantendo o mesmo _id, e reclassifica quem passa a alcançar', async () => {
       await db.purchases.create([purchase('Uber Eats', 'outros')]);
-      const { rule } = await service.upsertRule({
+      const { rule } = await service.upsertRule(USUARIO, {
         kind: 'exact',
         value: 'Uber',
         category: 'transporte',
       });
 
-      const editada = await service.editRule(String(rule._id), {
+      const editada = await service.editRule(USUARIO, String(rule._id), {
         kind: 'exact',
         value: 'Uber Eats',
         category: 'transporte',
@@ -215,13 +223,13 @@ describe('CategoryService', () => {
     // resolve, exatamente como resolve quando a regra é apagada.
     it('devolve à categoria da fatura quem a forma antiga alcançava e a nova não', async () => {
       await db.purchases.create([purchase('Uber', 'outros')]);
-      const { rule } = await service.upsertRule({
+      const { rule } = await service.upsertRule(USUARIO, {
         kind: 'exact',
         value: 'Uber',
         category: 'transporte',
       });
 
-      await service.editRule(String(rule._id), {
+      await service.editRule(USUARIO, String(rule._id), {
         kind: 'exact',
         value: 'Uber Eats',
         category: 'transporte',
@@ -235,13 +243,13 @@ describe('CategoryService', () => {
         purchase('Ifood *Ifd*Dominos', 'outros'),
         purchase('Ifood *Ifd*Farmacia', 'outros'),
       ]);
-      const { rule } = await service.upsertRule({
+      const { rule } = await service.upsertRule(USUARIO, {
         kind: 'exact',
         value: 'Ifood *Ifd*Dominos',
         category: 'restaurante',
       });
 
-      await service.editRule(String(rule._id), {
+      await service.editRule(USUARIO, String(rule._id), {
         kind: 'contains',
         value: 'ifd*',
         category: 'restaurante',
@@ -251,15 +259,20 @@ describe('CategoryService', () => {
     });
 
     it('recusa colidir com outra regra que já tem o mesmo par (kind, value)', async () => {
-      await db.rules.create({ kind: 'exact', value: 'Uber', category: 'transporte' });
-      const { rule } = await service.upsertRule({
+      await db.rules.create({
+        userId: USUARIO,
+        kind: 'exact',
+        value: 'Uber',
+        category: 'transporte',
+      });
+      const { rule } = await service.upsertRule(USUARIO, {
         kind: 'exact',
         value: 'Netflix',
         category: 'serviços',
       });
 
       const erro = await recusa(
-        service.editRule(String(rule._id), {
+        service.editRule(USUARIO, String(rule._id), {
           kind: 'exact',
           value: 'uber', // mesma regra, só a caixa muda
           category: 'serviços',
@@ -273,7 +286,7 @@ describe('CategoryService', () => {
     it('recusa id que não existe', async () => {
       assert.match(
         await recusa(
-          service.editRule('64b7f1c2a1b2c3d4e5f60718', {
+          service.editRule(USUARIO, '64b7f1c2a1b2c3d4e5f60718', {
             kind: 'exact',
             value: 'x',
             category: 'y',
@@ -284,14 +297,14 @@ describe('CategoryService', () => {
     });
 
     it('recusa apontar para o pagamento da fatura', async () => {
-      const { rule } = await service.upsertRule({
+      const { rule } = await service.upsertRule(USUARIO, {
         kind: 'exact',
         value: 'Uber',
         category: 'transporte',
       });
 
       const erro = await recusa(
-        service.editRule(String(rule._id), {
+        service.editRule(USUARIO, String(rule._id), {
           kind: 'exact',
           value: 'Uber',
           category: 'payment',
@@ -304,13 +317,13 @@ describe('CategoryService', () => {
   describe('deleteRule', () => {
     it('devolve as compras à categoria que a ingestão tinha resolvido', async () => {
       await db.purchases.create([purchase('Ikea', 'outros')]);
-      const { rule } = await service.upsertRule({
+      const { rule } = await service.upsertRule(USUARIO, {
         kind: 'exact',
         value: 'Ikea',
         category: 'casa',
       });
 
-      const { restored } = await service.deleteRule(String(rule._id));
+      const { restored } = await service.deleteRule(USUARIO, String(rule._id));
 
       assert.equal(restored, 1);
       assert.equal((await db.purchases.findOne().exec())?.category, 'outros');
@@ -318,7 +331,7 @@ describe('CategoryService', () => {
 
     it('recusa id que não existe', async () => {
       assert.match(
-        await recusa(service.deleteRule('64b7f1c2a1b2c3d4e5f60718')),
+        await recusa(service.deleteRule(USUARIO, '64b7f1c2a1b2c3d4e5f60718')),
         /Regra não encontrada/,
       );
     });
@@ -334,7 +347,7 @@ describe('CategoryService', () => {
     it('manda para encargos o que a lista de agora reconhece, contra a ingestão', async () => {
       await db.purchases.create([purchase('Juros de dívida encerrada', 'outros')]);
 
-      const { financing } = await service.reapply();
+      const { financing } = await service.reapply(USUARIO);
 
       assert.equal(financing, 1);
       assert.equal((await db.purchases.findOne().exec())?.category, 'encargos');
@@ -347,7 +360,7 @@ describe('CategoryService', () => {
         purchase('Uber viagem', 'encargos', { sourceCategory: 'encargos' }),
       ]);
 
-      const { financing } = await service.reapply();
+      const { financing } = await service.reapply(USUARIO);
 
       assert.equal(financing, 1);
       // Não volta para `sourceCategory`, que insistiria em `encargos`: refaz a
@@ -358,7 +371,7 @@ describe('CategoryService', () => {
     it('deixa a regra do usuário ganhar do encargo', async () => {
       await db.purchases.create([purchase('Anuidade Smart Fit', 'outros')]);
 
-      await service.upsertRule({
+      await service.upsertRule(USUARIO, {
         kind: 'contains',
         value: 'Anuidade Smart Fit',
         category: 'academia',
@@ -375,8 +388,8 @@ describe('CategoryService', () => {
         purchase('Uber', 'outros'),
       ]);
 
-      await service.reapply();
-      const segunda = await service.reapply();
+      await service.reapply(USUARIO);
+      const segunda = await service.reapply(USUARIO);
 
       assert.deepEqual(segunda, { classified: 0, restored: 0, financing: 0 });
     });
@@ -389,9 +402,9 @@ describe('CategoryService', () => {
         purchase('Shopee *Alfa', 'outros'),
         purchase('Shopee *Beta', 'outros'),
       ]);
-      await service.upsertRule({ kind: 'contains', value: 'shopee', category: 'Shopee' });
+      await service.upsertRule(USUARIO, { kind: 'contains', value: 'shopee', category: 'Shopee' });
 
-      const [uso] = await service.listRuleUsage();
+      const [uso] = await service.listRuleUsage(USUARIO);
 
       assert.equal(uso.value, 'shopee');
       assert.equal(uso.purchases, 3);
@@ -405,10 +418,14 @@ describe('CategoryService', () => {
         purchase('Shopee *Alfa', 'outros'),
         purchase('Shopee *Beta', 'outros'),
       ]);
-      await service.upsertRule({ kind: 'contains', value: 'shopee', category: 'Shopee' });
-      await service.upsertRule({ kind: 'exact', value: 'Shopee *Alfa', category: 'saúde' });
+      await service.upsertRule(USUARIO, { kind: 'contains', value: 'shopee', category: 'Shopee' });
+      await service.upsertRule(USUARIO, {
+        kind: 'exact',
+        value: 'Shopee *Alfa',
+        category: 'saúde',
+      });
 
-      const uso = await service.listRuleUsage();
+      const uso = await service.listRuleUsage(USUARIO);
       const trecho = uso.find((u) => u.kind === 'contains');
       const exata = uso.find((u) => u.kind === 'exact');
 
@@ -418,9 +435,9 @@ describe('CategoryService', () => {
 
     it('mostra zero na regra que não alcança nada hoje', async () => {
       await db.purchases.create([purchase('Uber', 'transporte')]);
-      await service.upsertRule({ kind: 'exact', value: 'Loja fechada', category: 'casa' });
+      await service.upsertRule(USUARIO, { kind: 'exact', value: 'Loja fechada', category: 'casa' });
 
-      const [uso] = await service.listRuleUsage();
+      const [uso] = await service.listRuleUsage(USUARIO);
       assert.equal(uso.purchases, 0);
     });
   });
@@ -429,14 +446,14 @@ describe('CategoryService', () => {
     it('propõe o trecho que substitui as regras exact de um mesmo lugar', async () => {
       for (const sufixo of ['Alfa', 'Beta', 'Gama']) {
         await db.purchases.create([purchase(`Shopee *${sufixo}`, 'outros')]);
-        await service.upsertRule({
+        await service.upsertRule(USUARIO, {
           kind: 'exact',
           value: `Shopee *${sufixo}`,
           category: 'Shopee',
         });
       }
 
-      const [sugestao] = await service.listConsolidations();
+      const [sugestao] = await service.listConsolidations(USUARIO);
 
       assert.equal(sugestao.category, 'Shopee');
       assert.equal(sugestao.replaces.length, 3);
@@ -449,7 +466,7 @@ describe('CategoryService', () => {
     it('devolve a bloqueada dizendo o que ela levaria junto', async () => {
       for (const sufixo of ['Alfa', 'Beta', 'Gama']) {
         await db.purchases.create([purchase(`Shopee *${sufixo}`, 'outros')]);
-        await service.upsertRule({
+        await service.upsertRule(USUARIO, {
           kind: 'exact',
           value: `Shopee *${sufixo}`,
           category: 'Shopee',
@@ -458,7 +475,9 @@ describe('CategoryService', () => {
       // Classificada pela ingestão, sem regra própria: seria capturada.
       await db.purchases.create([purchase('Shopee *Drogaria', 'saúde')]);
 
-      const bloqueada = (await service.listConsolidations()).find((s) => s.conflicts.length > 0);
+      const bloqueada = (await service.listConsolidations(USUARIO)).find(
+        (s) => s.conflicts.length > 0,
+      );
 
       assert.ok(bloqueada);
       assert.deepEqual(bloqueada.conflicts, [{ title: 'Shopee *Drogaria', category: 'saúde' }]);
@@ -469,23 +488,27 @@ describe('CategoryService', () => {
     it('marca a descartada em vez de tirá-la da lista, e o restaurar desfaz', async () => {
       for (const sufixo of ['Alfa', 'Beta', 'Gama']) {
         await db.purchases.create([purchase(`Shopee *${sufixo}`, 'outros')]);
-        await service.upsertRule({ kind: 'exact', value: `Shopee *${sufixo}`, category: 'Shopee' });
+        await service.upsertRule(USUARIO, {
+          kind: 'exact',
+          value: `Shopee *${sufixo}`,
+          category: 'Shopee',
+        });
       }
 
-      const [antes] = await service.listConsolidations();
+      const [antes] = await service.listConsolidations(USUARIO);
       assert.equal(antes.dismissed, false);
 
-      await service.dismissConsolidation({ category: antes.category, value: antes.value });
+      await service.dismissConsolidation(USUARIO, { category: antes.category, value: antes.value });
       // Duas vezes: o botão pode ser clicado de novo antes de a lista recarregar,
       // e o índice único derrubaria a segunda se o upsert não fosse idempotente.
-      await service.dismissConsolidation({ category: antes.category, value: antes.value });
+      await service.dismissConsolidation(USUARIO, { category: antes.category, value: antes.value });
 
-      const depois = await service.listConsolidations();
+      const depois = await service.listConsolidations(USUARIO);
       assert.equal(depois.length, 1);
       assert.equal(depois[0].dismissed, true);
 
-      await service.restoreConsolidation({ category: antes.category, value: antes.value });
-      assert.equal((await service.listConsolidations())[0].dismissed, false);
+      await service.restoreConsolidation(USUARIO, { category: antes.category, value: antes.value });
+      assert.equal((await service.listConsolidations(USUARIO))[0].dismissed, false);
     });
 
     // O descarte é por par: esconder a de uma categoria não pode esconder a de
@@ -493,17 +516,28 @@ describe('CategoryService', () => {
     it('descarta só o par (categoria, trecho) que recebeu', async () => {
       for (const sufixo of ['Alfa', 'Beta', 'Gama']) {
         await db.purchases.create([purchase(`Shopee *${sufixo}`, 'outros')]);
-        await service.upsertRule({ kind: 'exact', value: `Shopee *${sufixo}`, category: 'Shopee' });
+        await service.upsertRule(USUARIO, {
+          kind: 'exact',
+          value: `Shopee *${sufixo}`,
+          category: 'Shopee',
+        });
         await db.purchases.create([purchase(`Uber *${sufixo}`, 'outros')]);
-        await service.upsertRule({ kind: 'exact', value: `Uber *${sufixo}`, category: 'transporte' });
+        await service.upsertRule(USUARIO, {
+          kind: 'exact',
+          value: `Uber *${sufixo}`,
+          category: 'transporte',
+        });
       }
 
-      const todas = await service.listConsolidations();
+      const todas = await service.listConsolidations(USUARIO);
       const shopee = todas.find((s) => s.category === 'Shopee');
       assert.ok(shopee);
-      await service.dismissConsolidation({ category: shopee.category, value: shopee.value });
+      await service.dismissConsolidation(USUARIO, {
+        category: shopee.category,
+        value: shopee.value,
+      });
 
-      const depois = await service.listConsolidations();
+      const depois = await service.listConsolidations(USUARIO);
       assert.deepEqual(
         depois.map((s) => [s.category, s.dismissed]).sort(),
         [
@@ -518,17 +552,24 @@ describe('CategoryService', () => {
     async function comTresRegras() {
       for (const sufixo of ['Alfa', 'Beta', 'Gama']) {
         await db.purchases.create([purchase(`Shopee *${sufixo}`, 'outros')]);
-        await service.upsertRule({ kind: 'exact', value: `Shopee *${sufixo}`, category: 'Shopee' });
+        await service.upsertRule(USUARIO, {
+          kind: 'exact',
+          value: `Shopee *${sufixo}`,
+          category: 'Shopee',
+        });
       }
     }
 
     it('troca as exact cobertas por uma contains, sem mudar a categoria de ninguém', async () => {
       await comTresRegras();
 
-      const resultado = await service.consolidate({ value: 'shopee *', category: 'Shopee' });
+      const resultado = await service.consolidate(USUARIO, {
+        value: 'shopee *',
+        category: 'Shopee',
+      });
 
       assert.equal(resultado.deleted, 3);
-      const regras = await service.listRules();
+      const regras = await service.listRules(USUARIO);
       assert.equal(regras.length, 1);
       assert.equal(regras[0].kind, 'contains');
 
@@ -540,25 +581,32 @@ describe('CategoryService', () => {
     // partir do trecho — nunca uma lista de ids vinda do cliente.
     it('não toca em regra de outra categoria nem no que o trecho não cobre', async () => {
       await comTresRegras();
-      await service.upsertRule({ kind: 'exact', value: 'Shopee *Drogaria', category: 'saúde' });
-      await service.upsertRule({ kind: 'exact', value: 'Uber', category: 'transporte' });
+      await service.upsertRule(USUARIO, {
+        kind: 'exact',
+        value: 'Shopee *Drogaria',
+        category: 'saúde',
+      });
+      await service.upsertRule(USUARIO, { kind: 'exact', value: 'Uber', category: 'transporte' });
 
-      await service.consolidate({ value: 'shopee *', category: 'Shopee' });
+      await service.consolidate(USUARIO, { value: 'shopee *', category: 'Shopee' });
 
-      const sobraram = (await service.listRules()).map((r) => r.value).sort();
+      const sobraram = (await service.listRules(USUARIO)).map((r) => r.value).sort();
       assert.deepEqual(sobraram, ['Shopee *Drogaria', 'Uber', 'shopee *']);
     });
 
     it('recusa trecho vazio', async () => {
       assert.match(
-        await recusa(service.consolidate({ value: '   ', category: 'Shopee' })),
+        await recusa(service.consolidate(USUARIO, { value: '   ', category: 'Shopee' })),
         /vazio/,
       );
     });
 
     it('sem exceções, devolve exceptions: 0', async () => {
       await comTresRegras();
-      const resultado = await service.consolidate({ value: 'shopee *', category: 'Shopee' });
+      const resultado = await service.consolidate(USUARIO, {
+        value: 'shopee *',
+        category: 'Shopee',
+      });
       assert.equal(resultado.exceptions, 0);
     });
 
@@ -572,7 +620,7 @@ describe('CategoryService', () => {
         await comTresRegras();
         await db.purchases.create([purchase('Shopee *Farmacia', 'saúde')]);
 
-        const resultado = await service.consolidate({
+        const resultado = await service.consolidate(USUARIO, {
           value: 'shopee *',
           category: 'Shopee',
           exceptions: [{ title: 'Shopee *Farmacia', category: 'saúde' }],
@@ -593,9 +641,14 @@ describe('CategoryService', () => {
       it('não duplica se o título da exceção já tiver virado regra exact', async () => {
         await comTresRegras();
         await db.purchases.create([purchase('Shopee *Farmacia', 'saúde')]);
-        await db.rules.create({ kind: 'exact', value: 'Shopee *Farmacia', category: 'saúde' });
+        await db.rules.create({
+          userId: USUARIO,
+          kind: 'exact',
+          value: 'Shopee *Farmacia',
+          category: 'saúde',
+        });
 
-        await service.consolidate({
+        await service.consolidate(USUARIO, {
           value: 'shopee *',
           category: 'Shopee',
           exceptions: [{ title: 'Shopee *Farmacia', category: 'saúde' }],
@@ -611,7 +664,7 @@ describe('CategoryService', () => {
           purchase('Shopee *Vestido', 'vestuário'),
         ]);
 
-        const resultado = await service.consolidate({
+        const resultado = await service.consolidate(USUARIO, {
           value: 'shopee *',
           category: 'Shopee',
           exceptions: [

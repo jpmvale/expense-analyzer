@@ -44,3 +44,4 @@ export const BillsPage = withSuspense(lazy(() => import('./Bills/Bills')));
 export const RecurringPage = withSuspense(lazy(() => import('./Recurring/Recurring')));
 export const UncategorizedPage = withSuspense(lazy(() => import('./Uncategorized/Uncategorized')));
 export const RulesPage = withSuspense(lazy(() => import('./Rules/Rules')));
+export const ImportPage = withSuspense(lazy(() => import('./Import/Import')));

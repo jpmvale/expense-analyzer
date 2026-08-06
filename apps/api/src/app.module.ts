@@ -5,6 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { CategoryModule } from './category/category.module';
+import { ImportModule } from './import/import.module';
 import { PurchaseModule } from './purchase/purchase.module';
 import { SyncModule } from './sync/sync.module';
 
@@ -31,6 +32,7 @@ const rootEnv = resolve(__dirname, '../../../.env');
     CategoryModule,
     AuthModule,
     SyncModule,
+    ImportModule,
   ],
   controllers: [AppController],
 })

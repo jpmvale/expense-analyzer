@@ -1,7 +1,7 @@
 import { PAYMENT_CATEGORY, type PurchaseStore } from '@expense/categorization';
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { purchase, startTestDb, type TestDb } from '../testing/mongo';
+import { purchase, startTestDb, USUARIO, type TestDb } from '../testing/mongo';
 import { createPurchaseStore } from './purchase-store';
 
 describe('createPurchaseStore', () => {
@@ -10,7 +10,7 @@ describe('createPurchaseStore', () => {
 
   before(async () => {
     db = await startTestDb();
-    store = createPurchaseStore(db.purchases);
+    store = createPurchaseStore(db.purchases, USUARIO);
   });
 
   after(async () => db.stop());
@@ -80,10 +80,7 @@ describe('createPurchaseStore', () => {
    * passaria gravando a string literal "$sourceCategory".
    */
   it('devolve cada compra à categoria que a ingestão resolveu, uma a uma', async () => {
-    await db.purchases.create([
-      purchase('Uber', 'transporte'),
-      purchase('Padaria', 'restaurante'),
-    ]);
+    await db.purchases.create([purchase('Uber', 'transporte'), purchase('Padaria', 'restaurante')]);
     await db.purchases.updateMany({}, { $set: { category: 'tudo errado' } });
 
     assert.equal(await store.restoreSourceCategory(['Uber', 'Padaria']), 2);

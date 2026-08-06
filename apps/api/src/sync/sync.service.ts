@@ -1,4 +1,9 @@
-import { collectingLogger, fetchBills, ingestBills, type IngestionConfig } from '@expense/ingestion';
+import {
+  collectingLogger,
+  fetchBills,
+  ingestBills,
+  type IngestionConfig,
+} from '@expense/ingestion';
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
@@ -42,8 +47,8 @@ export class SyncService {
   }
 
   /** O estado de agora e a última execução, para a tela responder "quando?". */
-  async status(): Promise<SyncStatusView> {
-    const lastRun = await this.runModel.findOne().sort({ startedAt: -1 }).exec();
+  async status(userId: Types.ObjectId): Promise<SyncStatusView> {
+    const lastRun = await this.runModel.findOne({ userId }).sort({ startedAt: -1 }).exec();
     if (!lastRun) return { running: false, lastRun: null };
 
     if (lastRun.status !== 'running') {
@@ -75,13 +80,14 @@ export class SyncService {
    * um resultado que ninguém sabe se aconteceu. O estado vai para o banco, e a
    * tela pergunta por ele em `GET /sync`.
    */
-  async start(): Promise<SyncStatusView> {
-    const current = await this.status();
+  async start(userId: Types.ObjectId): Promise<SyncStatusView> {
+    const current = await this.status(userId);
     if (current.running) {
       throw new ConflictException('Uma sincronização já está em andamento.');
     }
 
     const run = await this.runModel.create({
+      userId,
       trigger: 'manual',
       status: 'running',
       startedAt: new Date(),
@@ -91,11 +97,11 @@ export class SyncService {
     // solta que rejeita derruba o processo inteiro do Node, e aqui ela roda fora
     // do ciclo de vida da requisição, onde nenhum filtro de exceção do Nest a
     // alcançaria.
-    void this.execute(run._id).catch((error: unknown) => {
+    void this.execute(userId, run._id).catch((error: unknown) => {
       this.logger.error(`Falha ao registrar o fim da sincronização: ${String(error)}`);
     });
 
-    return this.status();
+    return this.status(userId);
   }
 
   /**
@@ -104,14 +110,14 @@ export class SyncService {
    * Nunca relança: quem chamou já respondeu ao navegador faz tempo. O desfecho,
    * inclusive o erro, vira estado no banco, que é onde a tela vai procurá-lo.
    */
-  private async execute(id: Types.ObjectId): Promise<void> {
+  private async execute(userId: Types.ObjectId, id: Types.ObjectId): Promise<void> {
     const { logger, lines } = collectingLogger();
 
     try {
       const bills = await fetchBills(this.ingestion, logger);
       const result = await ingestBills(
         bills,
-        createBillStore(this.purchaseModel, this.ruleModel),
+        createBillStore(this.purchaseModel, this.ruleModel, userId),
         logger,
       );
 

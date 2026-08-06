@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Types } from 'mongoose';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { CategoryService } from './category.service';
 import {
   ConsolidateDto,
@@ -18,29 +20,33 @@ export class CategoryController {
   @ApiOperation({
     summary: 'Categorias em que se pode classificar, com quantas compras cada uma tem',
   })
-  listCategories() {
-    return this.categoryService.listCategories();
+  listCategories(@CurrentUser() userId: Types.ObjectId) {
+    return this.categoryService.listCategories(userId);
   }
 
   @Post()
   @ApiOperation({ summary: 'Cria uma categoria, antes de qualquer compra usá-la' })
-  createCategory(@Body() dto: CreateCategoryDto) {
-    return this.categoryService.createCategory(dto);
+  createCategory(@CurrentUser() userId: Types.ObjectId, @Body() dto: CreateCategoryDto) {
+    return this.categoryService.createCategory(userId, dto);
   }
 
   @Patch(':name')
   @ApiOperation({
     summary: 'Renomeia a categoria — apontar para uma que já existe mescla as duas',
   })
-  renameCategory(@Param('name') name: string, @Body() dto: RenameCategoryDto) {
-    return this.categoryService.renameCategory(name, dto);
+  renameCategory(
+    @CurrentUser() userId: Types.ObjectId,
+    @Param('name') name: string,
+    @Body() dto: RenameCategoryDto,
+  ) {
+    return this.categoryService.renameCategory(userId, name, dto);
   }
 
   @Delete(':name')
   @HttpCode(204)
   @ApiOperation({ summary: 'Apaga uma categoria que não está em uso' })
-  deleteCategory(@Param('name') name: string) {
-    return this.categoryService.deleteCategory(name);
+  deleteCategory(@CurrentUser() userId: Types.ObjectId, @Param('name') name: string) {
+    return this.categoryService.deleteCategory(userId, name);
   }
 }
 
@@ -53,8 +59,8 @@ export class CategoryRuleController {
   @ApiOperation({
     summary: 'As regras do usuário, cada uma com quantas compras e títulos ela governa hoje',
   })
-  listRules() {
-    return this.categoryService.listRuleUsage();
+  listRules(@CurrentUser() userId: Types.ObjectId) {
+    return this.categoryService.listRuleUsage(userId);
   }
 
   @Get('consolidation')
@@ -63,8 +69,8 @@ export class CategoryRuleController {
       'Onde um punhado de regras `exact` viraria uma `contains` — incluindo as bloqueadas, ' +
       'com o que elas levariam junto',
   })
-  listConsolidations() {
-    return this.categoryService.listConsolidations();
+  listConsolidations(@CurrentUser() userId: Types.ObjectId) {
+    return this.categoryService.listConsolidations(userId);
   }
 
   /*
@@ -75,54 +81,64 @@ export class CategoryRuleController {
   @Post('consolidation/dismiss')
   @HttpCode(204)
   @ApiOperation({ summary: 'Esconde uma sugestão de consolidação da lista' })
-  dismissConsolidation(@Body() dto: DismissConsolidationDto) {
-    return this.categoryService.dismissConsolidation(dto);
+  dismissConsolidation(
+    @CurrentUser() userId: Types.ObjectId,
+    @Body() dto: DismissConsolidationDto,
+  ) {
+    return this.categoryService.dismissConsolidation(userId, dto);
   }
 
   @Post('consolidation/restore')
   @HttpCode(204)
   @ApiOperation({ summary: 'Devolve à lista uma sugestão descartada' })
-  restoreConsolidation(@Body() dto: DismissConsolidationDto) {
-    return this.categoryService.restoreConsolidation(dto);
+  restoreConsolidation(
+    @CurrentUser() userId: Types.ObjectId,
+    @Body() dto: DismissConsolidationDto,
+  ) {
+    return this.categoryService.restoreConsolidation(userId, dto);
   }
 
   @Post()
   @ApiOperation({
     summary: 'Cria ou atualiza uma regra e reclassifica as compras que ela alcança',
   })
-  upsertRule(@Body() dto: CreateRuleDto) {
-    return this.categoryService.upsertRule(dto);
+  upsertRule(@CurrentUser() userId: Types.ObjectId, @Body() dto: CreateRuleDto) {
+    return this.categoryService.upsertRule(userId, dto);
   }
 
   @Patch(':id')
   @ApiOperation({
     summary: 'Muda o trecho, o tipo ou o destino de uma regra que já existe, pelo id',
   })
-  editRule(@Param('id') id: string, @Body() dto: CreateRuleDto) {
-    return this.categoryService.editRule(id, dto);
+  editRule(
+    @CurrentUser() userId: Types.ObjectId,
+    @Param('id') id: string,
+    @Body() dto: CreateRuleDto,
+  ) {
+    return this.categoryService.editRule(userId, id, dto);
   }
 
   @Post('consolidate')
   @ApiOperation({
     summary: 'Troca as regras `exact` cobertas pelo trecho por uma `contains`, reaplicando uma vez',
   })
-  consolidate(@Body() dto: ConsolidateDto) {
-    return this.categoryService.consolidate(dto);
+  consolidate(@CurrentUser() userId: Types.ObjectId, @Body() dto: ConsolidateDto) {
+    return this.categoryService.consolidate(userId, dto);
   }
 
   @Post('reapply')
   @ApiOperation({
     summary: 'Reclassifica a base com as regras e a lista de encargos de agora, sem reextrair',
   })
-  reapply() {
-    return this.categoryService.reapply();
+  reapply(@CurrentUser() userId: Types.ObjectId) {
+    return this.categoryService.reapply(userId);
   }
 
   @Delete(':id')
   @ApiOperation({
     summary: 'Apaga a regra e devolve as compras dela à categoria que veio da fatura',
   })
-  deleteRule(@Param('id') id: string) {
-    return this.categoryService.deleteRule(id);
+  deleteRule(@CurrentUser() userId: Types.ObjectId, @Param('id') id: string) {
+    return this.categoryService.deleteRule(userId, id);
   }
 }

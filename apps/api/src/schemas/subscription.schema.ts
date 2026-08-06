@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
 
 export type SubscriptionDocument = HydratedDocument<Subscription>;
 
@@ -21,10 +21,14 @@ export type SubscriptionDocument = HydratedDocument<Subscription>;
  */
 @Schema({ collection: 'subscriptions', timestamps: true })
 export class Subscription {
+  /** De quem é este apelido — o `_id` na coleção `users`. */
+  @Prop({ type: SchemaTypes.ObjectId, required: true })
+  userId: Types.ObjectId;
+
   // `type` explícito em vez de inferido: o `emitDecoratorMetadata` só existe sob
   // o compilador do TypeScript, e os testes rodam sob esbuild, que não o emite.
   // Dizer o tipo produz o mesmo schema e o torna independente do flag.
-  @Prop({ type: String, required: true, unique: true })
+  @Prop({ type: String, required: true })
   key: string;
 
   @Prop({ type: String, required: true })
@@ -32,3 +36,7 @@ export class Subscription {
 }
 
 export const SubscriptionSchema = SchemaFactory.createForClass(Subscription);
+
+// Único por usuário, e não globalmente: o `unique: true` que ficava no `@Prop`
+// de `key` faria o apelido que um usuário deu ao Spotify impedir o de outro.
+SubscriptionSchema.index({ userId: 1, key: 1 }, { unique: true });

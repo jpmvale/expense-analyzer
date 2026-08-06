@@ -110,11 +110,11 @@ function buildBills(): Bill[] {
 
 async function main() {
   const bills = buildBills();
-  const { client, purchases } = await connect();
+  const { client, purchases, ownerId } = await connect();
   try {
     console.log(`Populando o banco com ${bills.length} faturas de exemplo:`);
     for (const bill of bills) {
-      await writeBill(purchases, bill);
+      await writeBill(purchases, bill, ownerId);
       console.log(`  ${bill.referenceMonth.toISOString().slice(0, 7)}: ${bill.data.length} compras`);
     }
     const total = bills.reduce((acc, bill) => acc + bill.data.length, 0);

@@ -5,6 +5,7 @@ import {
   parseAmount,
   parseBillCsv,
   referenceMonthFromFileName,
+  referenceMonthFromRows,
 } from './parseBillCsv';
 
 const MARCO = new Date('2025-03-01T00:00:00.000Z');
@@ -335,5 +336,39 @@ describe('referenceMonthFromFileName', () => {
 
   it('devolve null quando o nome não traz <ano>-<mês>', () => {
     assert.equal(referenceMonthFromFileName('fatura-marco.csv'), null);
+  });
+});
+
+describe('referenceMonthFromRows', () => {
+  const fatura = (datas: string[]) =>
+    ['date,category,title,amount', ...datas.map((d) => `${d},transporte,Uber,10.00`)].join('\n');
+
+  it('devolve o mês em que caiu a maior parte das compras', () => {
+    // Uma fatura sempre tem compras do fim do mês anterior: o majoritário é o
+    // palpite certo, e o mais antigo seria o errado.
+    assert.equal(
+      referenceMonthFromRows(fatura(['2025-02-26', '2025-03-05', '2025-03-18']))?.toISOString(),
+      '2025-03-01T00:00:00.000Z',
+    );
+  });
+
+  it('no empate, fica com o mês mais recente', () => {
+    assert.equal(
+      referenceMonthFromRows(fatura(['2025-02-26', '2025-03-05']))?.toISOString(),
+      '2025-03-01T00:00:00.000Z',
+    );
+  });
+
+  it('ignora as linhas com data ilegível', () => {
+    assert.equal(
+      referenceMonthFromRows(fatura(['data invalida', '2025-07-05']))?.toISOString(),
+      '2025-07-01T00:00:00.000Z',
+    );
+  });
+
+  it('devolve null sem coluna de data, sem linhas ou sem data nenhuma legível', () => {
+    assert.equal(referenceMonthFromRows('title,amount\nUber,10.00'), null);
+    assert.equal(referenceMonthFromRows('date,category,title,amount'), null);
+    assert.equal(referenceMonthFromRows(fatura(['nem isso'])), null);
   });
 });

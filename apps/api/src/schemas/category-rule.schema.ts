@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
 
 export type CategoryRuleDocument = HydratedDocument<CategoryRule>;
 
@@ -11,11 +11,17 @@ export type CategoryRuleDocument = HydratedDocument<CategoryRule>;
  * morreria no próximo `pnpm extract`. Aqui a regra sobrevive, e é reaplicada
  * depois da gravação.
  *
- * O par (`kind`, `value`) é único — reclassificar o mesmo título é editar a
- * regra que já existe, nunca empilhar uma segunda.
+ * O trio (`userId`, `kind`, `value`) é único — reclassificar o mesmo título é
+ * editar a regra que já existe, nunca empilhar uma segunda. O dono entra na
+ * chave porque a regra é dele: "ifood → delivery" para um usuário não tem nada
+ * a dizer sobre as compras de outro.
  */
 @Schema({ collection: 'categoryRules', timestamps: true })
 export class CategoryRule {
+  /** De quem é esta regra — o `_id` na coleção `users`. */
+  @Prop({ type: SchemaTypes.ObjectId, required: true })
+  userId: Types.ObjectId;
+
   /**
    * `exact` casa o título inteiro; `contains`, um trecho dele.
    *
@@ -40,4 +46,4 @@ export class CategoryRule {
 
 export const CategoryRuleSchema = SchemaFactory.createForClass(CategoryRule);
 
-CategoryRuleSchema.index({ kind: 1, value: 1 }, { unique: true });
+CategoryRuleSchema.index({ userId: 1, kind: 1, value: 1 }, { unique: true });

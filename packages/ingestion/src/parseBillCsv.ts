@@ -224,3 +224,51 @@ export function referenceMonthFromFileName(fileName: string): Date | null {
   if (!match) return null;
   return new Date(`${match[1]}-${match[2]}-01T00:00:00.000Z`);
 }
+
+/**
+ * Adivinha o mês de referência pelas datas de dentro do arquivo: o mês em que
+ * caiu a maior parte das compras.
+ *
+ * É o plano B do upload, e só dele. Quem baixa a fatura do app do banco recebe
+ * um nome como `Nubank_2024-03-15.csv` ou `fatura (3).csv`, e exigir que
+ * renomeasse antes de subir seria transformar o padrão interno do extractor em
+ * tarefa do usuário. O nome continua tendo precedência quando traz `AAAA-MM` —
+ * ele é a intenção declarada, e esta função é só inferência.
+ *
+ * Inferência com limite conhecido: uma fatura tem compras do fim do mês anterior
+ * e parcelas lançadas à frente, então o mês *majoritário* é o palpite certo, e
+ * não o mais antigo nem o mais recente. Empate cai no mais recente, pelo mesmo
+ * critério do resto do parser: se dois meses disputam, o de agora vale mais.
+ */
+export function referenceMonthFromRows(csv: string): Date | null {
+  const lines = csv.split('\n').filter((line) => line.trim() !== '');
+  if (lines.length < 2) return null;
+
+  const dateColumn = splitCsvLine(lines[0]).indexOf('date');
+  if (dateColumn === -1) return null;
+
+  const counts = new Map<string, number>();
+  for (const line of lines.slice(1)) {
+    const raw = splitCsvLine(line)[dateColumn];
+    const date = new Date(raw);
+    if (!raw || Number.isNaN(date.getTime())) continue;
+
+    // Pelo `Date` já interpretado, e não por um `slice` da string: um arquivo
+    // com data fora do ISO (`15/03/2024`) daria um "mês" sem sentido no corte,
+    // e ele viraria a referência do arquivo inteiro sem ninguém perceber.
+    const month = date.toISOString().slice(0, 7);
+    counts.set(month, (counts.get(month) ?? 0) + 1);
+  }
+
+  let best: string | undefined;
+  let bestCount = 0;
+  for (const [month, count] of [...counts].sort(([a], [b]) => a.localeCompare(b))) {
+    // `>=` sobre a lista ordenada faz o empate cair no mês mais recente.
+    if (count >= bestCount) {
+      best = month;
+      bestCount = count;
+    }
+  }
+
+  return best ? new Date(`${best}-01T00:00:00.000Z`) : null;
+}

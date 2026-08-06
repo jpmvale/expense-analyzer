@@ -1,7 +1,7 @@
 import { FALLBACK_CATEGORY, NON_SPENDING_CATEGORIES } from '@expense/categorization';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Purchase, PurchaseDocument } from '../schemas/purchase.schema';
 import { Subscription, SubscriptionDocument } from '../schemas/subscription.schema';
 import { Bill, buildBills } from './bill-aggregation';
@@ -56,8 +56,8 @@ export class PurchaseService {
    * é um `find` com `skip`/`limit`, e os agregados são um `$facet` que varre o
    * filtro uma vez só para as três contas.
    */
-  async listPurchases(filter: ListPurchasesQueryDto) {
-    const query = buildPurchaseFilter(filter);
+  async listPurchases(userId: Types.ObjectId, filter: ListPurchasesQueryDto) {
+    const query = buildPurchaseFilter(userId, filter);
     const { page, limit, skip } = buildPaging(filter.page, filter.limit);
 
     const [purchases, facet] = await Promise.all([
@@ -95,9 +95,9 @@ export class PurchaseService {
    * base de referência não se sente, mas é o mesmo cuidado que `/purchase/recurring`
    * e `/purchase/uncategorized` já tomavam.
    */
-  async listBills(): Promise<Bill[]> {
+  async listBills(userId: Types.ObjectId): Promise<Bill[]> {
     const purchases = await this.purchaseModel
-      .find()
+      .find({ userId })
       .select('amount category referenceMonth date')
       .sort('date')
       .exec();
@@ -119,9 +119,9 @@ export class PurchaseService {
    * variações de caixa vêm junto em `titles`, porque uma regra `exact` só
    * alcança a forma exata e a tela precisa saber quantas criar.
    */
-  async listUncategorized(): Promise<UncategorizedTitle[]> {
+  async listUncategorized(userId: Types.ObjectId): Promise<UncategorizedTitle[]> {
     const purchases = await this.purchaseModel
-      .find({ category: FALLBACK_CATEGORY })
+      .find({ userId, category: FALLBACK_CATEGORY })
       .select('title amount date')
       .exec();
 
@@ -139,13 +139,13 @@ export class PurchaseService {
    * escada de preços do Spotify começa em 2019, e qualquer janela mais curta
    * acharia um patamar só e nenhum degrau.
    */
-  async listRecurring(): Promise<NamedRecurringCharge[]> {
+  async listRecurring(userId: Types.ObjectId): Promise<NamedRecurringCharge[]> {
     const [purchases, names] = await Promise.all([
       this.purchaseModel
-        .find({ category: { $nin: NON_SPENDING_CATEGORIES } })
+        .find({ userId, category: { $nin: NON_SPENDING_CATEGORIES } })
         .select('title amount date')
         .exec(),
-      this.subscriptionModel.find().select('key name').exec(),
+      this.subscriptionModel.find({ userId }).select('key name').exec(),
     ]);
 
     const byKey = new Map(names.map((subscription) => [subscription.key, subscription.name]));
@@ -164,8 +164,11 @@ export class PurchaseService {
    * preço" da Visão geral, como rota própria para quem quer perguntar sem abrir
    * a tela: um cron pessoal, um atalho de celular.
    */
-  async listPriceAlerts(): Promise<PriceAlert[]> {
-    const [bills, recurring] = await Promise.all([this.listBills(), this.listRecurring()]);
+  async listPriceAlerts(userId: Types.ObjectId): Promise<PriceAlert[]> {
+    const [bills, recurring] = await Promise.all([
+      this.listBills(userId),
+      this.listRecurring(userId),
+    ]);
 
     // Mesmo recorte da Visão geral: só o que já fechou é notícia estável — a
     // fatura em aberto ainda pode ganhar compra e mudar o degrau.
@@ -183,20 +186,23 @@ export class PurchaseService {
    * série, e uma assinatura pode sair da lista por um tempo — invalidar o nome
    * nesse intervalo perderia o apelido justamente de quem cancelou e voltou.
    */
-  async nameSubscription(dto: NameSubscriptionDto): Promise<SubscriptionDocument> {
+  async nameSubscription(
+    userId: Types.ObjectId,
+    dto: NameSubscriptionDto,
+  ): Promise<SubscriptionDocument> {
     const key = dto.key.trim();
     const name = dto.name.trim();
 
     const saved = await this.subscriptionModel
-      .findOneAndUpdate({ key }, { $set: { name } }, { new: true, upsert: true })
+      .findOneAndUpdate({ userId, key }, { $set: { name } }, { new: true, upsert: true })
       .exec();
 
     return saved;
   }
 
   /** Devolve a assinatura ao título que vem no cartão. */
-  async clearSubscriptionName(key: string): Promise<void> {
-    const result = await this.subscriptionModel.findOneAndDelete({ key }).exec();
+  async clearSubscriptionName(userId: Types.ObjectId, key: string): Promise<void> {
+    const result = await this.subscriptionModel.findOneAndDelete({ userId, key }).exec();
     if (!result) throw new NotFoundException('Essa assinatura não tem nome formal.');
   }
 }

@@ -1,7 +1,10 @@
 /** Uma execução da ingestão, como a API a devolve em `/sync`. */
 export interface SyncRun {
-  /** `manual` é o botão desta tela; `cli` é o `pnpm extract` e o cron da VPS. */
-  trigger: 'manual' | 'cli';
+  /**
+   * `manual` é o botão desta tela; `cli` é o `pnpm extract` e o cron da VPS;
+   * `upload` é o envio de CSVs pela tela de Importar.
+   */
+  trigger: 'manual' | 'cli' | 'upload';
   status: 'running' | 'ok' | 'error';
   startedAt: string;
   finishedAt?: string;

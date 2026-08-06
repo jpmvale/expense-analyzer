@@ -3,22 +3,18 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { CategoryRule, CategoryRuleSchema } from '../schemas/category-rule.schema';
 import { Purchase, PurchaseSchema } from '../schemas/purchase.schema';
 import { SyncRun, SyncRunSchema } from '../schemas/sync-run.schema';
-import { AuthModule } from '../auth/auth.module';
-import { OwnerGuard } from '../auth/owner.guard';
-import { SyncController } from './sync.controller';
-import { SyncService } from './sync.service';
+import { ImportController } from './import.controller';
+import { ImportService } from './import.service';
 
 @Module({
   imports: [
-    // Pelo `AuthService`, que o `OwnerGuard` consulta para saber quem é o dono.
-    AuthModule,
     MongooseModule.forFeature([
       { name: Purchase.name, schema: PurchaseSchema },
       { name: CategoryRule.name, schema: CategoryRuleSchema },
       { name: SyncRun.name, schema: SyncRunSchema },
     ]),
   ],
-  controllers: [SyncController],
-  providers: [SyncService, OwnerGuard],
+  controllers: [ImportController],
+  providers: [ImportService],
 })
-export class SyncModule {}
+export class ImportModule {}

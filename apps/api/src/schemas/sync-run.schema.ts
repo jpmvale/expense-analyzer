@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
 
 export type SyncRunDocument = HydratedDocument<SyncRun>;
 
@@ -22,15 +22,26 @@ export type SyncRunDocument = HydratedDocument<SyncRun>;
  */
 @Schema({ collection: 'syncRuns' })
 export class SyncRun {
-  /** `manual` é o botão da tela; `cli` é o `pnpm extract` e o cron da VPS. */
-  @Prop({ type: String, required: true, enum: ['manual', 'cli'] })
-  trigger: 'manual' | 'cli';
+  /** De quem foi esta execução — o `_id` na coleção `users`. */
+  @Prop({ type: SchemaTypes.ObjectId, required: true })
+  userId: Types.ObjectId;
+
+  /**
+   * `manual` é o botão da tela; `cli` é o `pnpm extract` e o cron da VPS;
+   * `upload` é o envio de CSVs por `POST /import`.
+   *
+   * Os três gravam aqui pelo mesmo motivo de sempre: a tela pergunta "quando
+   * isto foi atualizado?", e essa resposta não depende de quem disparou. Sem o
+   * `upload` na lista, quem nunca vai usar o Drive veria "nunca sincronizado"
+   * logo depois de subir doze faturas.
+   */
+  @Prop({ type: String, required: true, enum: ['manual', 'cli', 'upload'] })
+  trigger: 'manual' | 'cli' | 'upload';
 
   @Prop({ type: String, required: true, enum: ['running', 'ok', 'error'] })
   status: 'running' | 'ok' | 'error';
 
-  /** Indexado decrescente: toda leitura desta coleção é "a mais recente". */
-  @Prop({ type: Date, required: true, index: true })
+  @Prop({ type: Date, required: true })
   startedAt: Date;
 
   @Prop({ type: Date })
@@ -73,3 +84,7 @@ export class SyncRun {
 }
 
 export const SyncRunSchema = SchemaFactory.createForClass(SyncRun);
+
+// Decrescente porque toda leitura desta coleção é "a mais recente **deste**
+// usuário" — o índice responde à ordenação sem varrer o histórico dos outros.
+SyncRunSchema.index({ userId: 1, startedAt: -1 });

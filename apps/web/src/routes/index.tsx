@@ -4,6 +4,7 @@ import LoginPage from '@/pages/Login/Login';
 import {
   BillsPage,
   DashboardPage,
+  ImportPage,
   PurchasesPage,
   RecurringPage,
   RulesPage,
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
           { path: '/recurring', element: <RecurringPage /> },
           { path: '/uncategorized', element: <UncategorizedPage /> },
           { path: '/rules', element: <RulesPage /> },
+          { path: '/import', element: <ImportPage /> },
         ],
       },
     ],

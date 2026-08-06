@@ -34,8 +34,28 @@ const ingestion: IngestionConfig = {
   allowInteractiveAuth: true,
 };
 
+/**
+ * A conta em nome de quem o extractor grava.
+ *
+ * O Drive é de uma pessoa só — as credenciais OAuth do servidor são dela —, e
+ * desde que os dados têm dono é preciso dizer de quem são as compras que entram
+ * por aqui. `OWNER_USERNAME` é a variável nova; `AUTH_USERNAME` continua valendo
+ * como default para que quem já rodava o cron não precise mexer no `.env`.
+ */
+function ownerUsername(): string {
+  const value = process.env.OWNER_USERNAME ?? process.env.AUTH_USERNAME;
+  if (!value) {
+    throw new Error(
+      'OWNER_USERNAME não definida — é a conta em nome de quem as faturas do Drive ' +
+        'são gravadas. Copie .env.example para .env na raiz do repositório.',
+    );
+  }
+  return value.trim().toLowerCase();
+}
+
 export const config = {
   repoRoot,
   mongoUri: required('MONGO_URI'),
+  ownerUsername: ownerUsername(),
   ingestion,
 };

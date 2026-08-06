@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { purchase, startTestDb, type TestDb } from '../testing/mongo';
+import { purchase, startTestDb, USUARIO, type TestDb } from '../testing/mongo';
 import { PurchaseService } from './purchase.service';
 
 /**
@@ -28,7 +28,7 @@ describe('PurchaseService', () => {
         purchase('Padaria', 'restaurante', { amount: 20 }),
       ]);
 
-      const { total, sum, average } = await service.listPurchases({});
+      const { total, sum, average } = await service.listPurchases(USUARIO, {});
 
       assert.equal(total, 2);
       assert.equal(sum, 50);
@@ -42,7 +42,7 @@ describe('PurchaseService', () => {
         purchase('Saldo em atraso', 'encargos', { amount: 1000 }),
       ]);
 
-      const { total, sum } = await service.listPurchases({});
+      const { total, sum } = await service.listPurchases(USUARIO, {});
 
       assert.equal(total, 1);
       assert.equal(sum, 30);
@@ -54,7 +54,7 @@ describe('PurchaseService', () => {
         purchase('Estorno de Shopee', 'estorno', { amount: -30 }),
       ]);
 
-      assert.equal((await service.listPurchases({})).sum, 70);
+      assert.equal((await service.listPurchases(USUARIO, {})).sum, 70);
     });
 
     it('deixa pedir encargo de propósito, mas nunca o pagamento', async () => {
@@ -63,8 +63,8 @@ describe('PurchaseService', () => {
         purchase('Pagamento recebido', 'payment', { amount: -500 }),
       ]);
 
-      assert.equal((await service.listPurchases({ category: 'encargos' })).total, 1);
-      assert.equal((await service.listPurchases({ category: 'payment' })).total, 0);
+      assert.equal((await service.listPurchases(USUARIO, { category: 'encargos' })).total, 1);
+      assert.equal((await service.listPurchases(USUARIO, { category: 'payment' })).total, 0);
     });
 
     // Título de fatura é cheio de `*` e `+`. Sem escapar, `Mercadolivre*Mercadol`
@@ -75,7 +75,7 @@ describe('PurchaseService', () => {
         purchase('Mercadolivreeee', 'compras'),
       ]);
 
-      const achados = await service.listPurchases({ title: 'Mercadolivre*Mercadol' });
+      const achados = await service.listPurchases(USUARIO, { title: 'Mercadolivre*Mercadol' });
 
       assert.equal(achados.total, 1);
       assert.equal(achados.purchases[0].title, 'Mercadolivre*Mercadol');
@@ -83,12 +83,12 @@ describe('PurchaseService', () => {
 
     it('não quebra com parêntese na busca', async () => {
       await db.purchases.create([purchase('Loja (matriz)', 'compras')]);
-      assert.equal((await service.listPurchases({ title: 'Loja (matriz)' })).total, 1);
+      assert.equal((await service.listPurchases(USUARIO, { title: 'Loja (matriz)' })).total, 1);
     });
 
     it('acha o título independentemente da caixa', async () => {
       await db.purchases.create([purchase('MERCADOLIVRE', 'compras')]);
-      assert.equal((await service.listPurchases({ title: 'mercadolivre' })).total, 1);
+      assert.equal((await service.listPurchases(USUARIO, { title: 'mercadolivre' })).total, 1);
     });
 
     /*
@@ -105,14 +105,14 @@ describe('PurchaseService', () => {
         }),
       ]);
 
-      assert.equal((await service.listPurchases({ month: '2026-03' })).total, 1);
-      assert.equal((await service.listPurchases({ month: '2026-02' })).total, 0);
-      assert.equal((await service.listPurchases({ date: '2026-02' })).total, 1);
-      assert.equal((await service.listPurchases({ date: '2026-03' })).total, 0);
+      assert.equal((await service.listPurchases(USUARIO, { month: '2026-03' })).total, 1);
+      assert.equal((await service.listPurchases(USUARIO, { month: '2026-02' })).total, 0);
+      assert.equal((await service.listPurchases(USUARIO, { date: '2026-02' })).total, 1);
+      assert.equal((await service.listPurchases(USUARIO, { date: '2026-03' })).total, 0);
     });
 
     it('devolve zeros, e não NaN, quando nada casa', async () => {
-      const vazio = await service.listPurchases({ title: 'não existe' });
+      const vazio = await service.listPurchases(USUARIO, { title: 'não existe' });
 
       assert.deepEqual(vazio.purchases, []);
       assert.equal(vazio.total, 0);
@@ -141,7 +141,7 @@ describe('PurchaseService', () => {
     });
 
     it('devolve só a página pedida', async () => {
-      const primeira = await service.listPurchases({ page: 1, limit: 50 });
+      const primeira = await service.listPurchases(USUARIO, { page: 1, limit: 50 });
 
       assert.equal(primeira.purchases.length, 50);
       assert.equal(primeira.page, 1);
@@ -149,7 +149,7 @@ describe('PurchaseService', () => {
     });
 
     it('mantém os agregados sobre o filtro inteiro, não sobre a página', async () => {
-      const pagina = await service.listPurchases({ page: 2, limit: 10 });
+      const pagina = await service.listPurchases(USUARIO, { page: 2, limit: 10 });
 
       assert.equal(pagina.purchases.length, 10);
       // 120 compras de R$ 10 — os números não são os da página.
@@ -159,12 +159,12 @@ describe('PurchaseService', () => {
     });
 
     it('a última página traz o resto', async () => {
-      const ultima = await service.listPurchases({ page: 3, limit: 50 });
+      const ultima = await service.listPurchases(USUARIO, { page: 3, limit: 50 });
       assert.equal(ultima.purchases.length, 20);
     });
 
     it('página além do fim vem vazia, sem quebrar', async () => {
-      const alem = await service.listPurchases({ page: 99, limit: 50 });
+      const alem = await service.listPurchases(USUARIO, { page: 99, limit: 50 });
 
       assert.deepEqual(alem.purchases, []);
       assert.equal(alem.total, 120);
@@ -178,7 +178,7 @@ describe('PurchaseService', () => {
     it('não repete nem perde linha entre páginas, mesmo com tudo empatado', async () => {
       const vistos: string[] = [];
       for (let page = 1; page <= 3; page++) {
-        const { purchases } = await service.listPurchases({
+        const { purchases } = await service.listPurchases(USUARIO, {
           page,
           limit: 50,
           sort: 'amount',
@@ -192,7 +192,7 @@ describe('PurchaseService', () => {
     });
 
     it('prende o limite ao teto', async () => {
-      const { limit } = await service.listPurchases({ limit: 999_999 });
+      const { limit } = await service.listPurchases(USUARIO, { limit: 999_999 });
       assert.equal(limit, 250);
     });
   });
@@ -209,29 +209,26 @@ describe('PurchaseService', () => {
     const titulos = (r: { purchases: Array<{ title: string }> }) => r.purchases.map((p) => p.title);
 
     it('ordena por título nos dois sentidos', async () => {
-      assert.deepEqual(titulos(await service.listPurchases({ sort: 'title', order: 'asc' })), [
-        'Abacaxi',
-        'Bicicleta',
-        'Cachorro',
-      ]);
-      assert.deepEqual(titulos(await service.listPurchases({ sort: 'title', order: 'desc' })), [
-        'Cachorro',
-        'Bicicleta',
-        'Abacaxi',
-      ]);
+      assert.deepEqual(
+        titulos(await service.listPurchases(USUARIO, { sort: 'title', order: 'asc' })),
+        ['Abacaxi', 'Bicicleta', 'Cachorro'],
+      );
+      assert.deepEqual(
+        titulos(await service.listPurchases(USUARIO, { sort: 'title', order: 'desc' })),
+        ['Cachorro', 'Bicicleta', 'Abacaxi'],
+      );
     });
 
     it('ordena por valor', async () => {
-      assert.deepEqual(titulos(await service.listPurchases({ sort: 'amount', order: 'desc' })), [
-        'Cachorro',
-        'Bicicleta',
-        'Abacaxi',
-      ]);
+      assert.deepEqual(
+        titulos(await service.listPurchases(USUARIO, { sort: 'amount', order: 'desc' })),
+        ['Cachorro', 'Bicicleta', 'Abacaxi'],
+      );
     });
 
     // A tela abre em "o que aconteceu agora", não em 2018.
     it('abre pelo mais recente quando ninguém pede ordem', async () => {
-      assert.deepEqual(titulos(await service.listPurchases({})), [
+      assert.deepEqual(titulos(await service.listPurchases(USUARIO, {})), [
         'Cachorro',
         'Bicicleta',
         'Abacaxi',
@@ -257,7 +254,7 @@ describe('PurchaseService', () => {
     });
 
     it('agrupa por mês da compra, com uma página de uma linha só', async () => {
-      const { byMonth, purchases } = await service.listPurchases({ page: 1, limit: 1 });
+      const { byMonth, purchases } = await service.listPurchases(USUARIO, { page: 1, limit: 1 });
 
       assert.equal(purchases.length, 1);
       assert.deepEqual(byMonth, [
@@ -270,7 +267,7 @@ describe('PurchaseService', () => {
     // prende o desempate por nome. Sem ele o painel troca a ordem sozinho entre
     // uma requisição e outra, o que ninguém reporta como bug mas incomoda.
     it('agrupa por categoria, da maior para a menor, desempatando pelo nome', async () => {
-      const { byCategory } = await service.listPurchases({ page: 1, limit: 1 });
+      const { byCategory } = await service.listPurchases(USUARIO, { page: 1, limit: 1 });
 
       assert.deepEqual(
         byCategory.map((c) => [c.categoryByMonth, c.totalCategory, c.frequency]),
@@ -296,7 +293,7 @@ describe('PurchaseService', () => {
         purchase('Virada', 'compras', { date: new Date('2026-02-01T00:00:00.000Z') }),
       ]);
 
-      const { byMonth } = await service.listPurchases({});
+      const { byMonth } = await service.listPurchases(USUARIO, {});
 
       assert.deepEqual(
         byMonth.map((p) => p.month),
@@ -305,7 +302,9 @@ describe('PurchaseService', () => {
     });
 
     it('respeita o filtro nos agregados', async () => {
-      const { byCategory, total } = await service.listPurchases({ category: 'transporte' });
+      const { byCategory, total } = await service.listPurchases(USUARIO, {
+        category: 'transporte',
+      });
 
       assert.equal(total, 2);
       assert.deepEqual(
@@ -323,7 +322,7 @@ describe('PurchaseService', () => {
         purchase('Uber', 'transporte', { amount: 900 }),
       ]);
 
-      const grupos = await service.listUncategorized();
+      const grupos = await service.listUncategorized(USUARIO);
 
       assert.deepEqual(
         grupos.map((g) => g.title),
@@ -339,7 +338,7 @@ describe('PurchaseService', () => {
         purchase('Saldo em atraso', 'encargos', { amount: 1000 }),
       ]);
 
-      const [fatura] = await service.listBills();
+      const [fatura] = await service.listBills(USUARIO);
 
       assert.equal(fatura.total, 100);
       assert.equal(fatura.charges, 1000);
@@ -359,7 +358,7 @@ describe('PurchaseService', () => {
       });
       await db.purchases.create(meses);
 
-      const [assinatura] = await service.listRecurring();
+      const [assinatura] = await service.listRecurring(USUARIO);
 
       assert.equal(assinatura.charges, 12);
       assert.equal(assinatura.current, 23.9);
@@ -375,11 +374,11 @@ describe('PurchaseService', () => {
         }),
       );
       await db.purchases.create(meses);
-      const [semNome] = await service.listRecurring();
+      const [semNome] = await service.listRecurring(USUARIO);
       assert.equal(semNome.name, null);
 
-      await service.nameSubscription({ key: semNome.key, name: 'Meli+' });
-      const [comNome] = await service.listRecurring();
+      await service.nameSubscription(USUARIO, { key: semNome.key, name: 'Meli+' });
+      const [comNome] = await service.listRecurring(USUARIO);
 
       assert.equal(comNome.name, 'Meli+');
       // O apelido é rótulo: não muda agrupamento, degrau nem título.
@@ -398,14 +397,14 @@ describe('PurchaseService', () => {
       );
       await db.purchases.create(meses);
 
-      assert.deepEqual(await service.listRecurring(), []);
+      assert.deepEqual(await service.listRecurring(USUARIO), []);
     });
   });
 
   describe('nome da assinatura', () => {
     it('rebatizar sobrescreve em vez de empilhar um segundo nome', async () => {
-      await service.nameSubscription({ key: 'spotify', name: 'Spotify' });
-      await service.nameSubscription({ key: 'spotify', name: 'Spotify Família' });
+      await service.nameSubscription(USUARIO, { key: 'spotify', name: 'Spotify' });
+      await service.nameSubscription(USUARIO, { key: 'spotify', name: 'Spotify Família' });
 
       assert.equal(await db.subscriptions.countDocuments({ key: 'spotify' }), 1);
       assert.equal((await db.subscriptions.findOne().exec())?.name, 'Spotify Família');
@@ -415,20 +414,20 @@ describe('PurchaseService', () => {
     // lista por um tempo. Exigir que a chave exista hoje perderia o apelido de
     // quem cancelou e voltou.
     it('aceita batizar chave que a detecção não devolve hoje', async () => {
-      await service.nameSubscription({ key: 'nunca-detectada', name: 'Alguma coisa' });
+      await service.nameSubscription(USUARIO, { key: 'nunca-detectada', name: 'Alguma coisa' });
       assert.equal(await db.subscriptions.countDocuments(), 1);
     });
 
     it('remover devolve a assinatura ao título do cartão', async () => {
-      await service.nameSubscription({ key: 'spotify', name: 'Spotify' });
-      await service.clearSubscriptionName('spotify');
+      await service.nameSubscription(USUARIO, { key: 'spotify', name: 'Spotify' });
+      await service.clearSubscriptionName(USUARIO, 'spotify');
 
       assert.equal(await db.subscriptions.countDocuments(), 0);
     });
 
     it('recusa remover nome que não existe', async () => {
       await assert.rejects(
-        () => service.clearSubscriptionName('fantasma'),
+        () => service.clearSubscriptionName(USUARIO, 'fantasma'),
         /não tem nome formal/,
       );
     });

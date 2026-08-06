@@ -17,17 +17,20 @@ import { reapplyRules } from '@expense/categorization';
 import { backfillSourceCategory, connect, createPurchaseStore, loadRules } from './mongo';
 
 async function main() {
-  const { client, purchases, rules } = await connect();
+  // Só a base do dono: este comando é a contraparte do `pnpm extract`, e reaplica
+  // sobre as mesmas compras que ele grava. As regras dos outros usuários são
+  // reaplicadas pela API, quando cada um mexe nas suas.
+  const { client, purchases, rules, ownerId } = await connect();
 
   try {
-    const backfilled = await backfillSourceCategory(purchases);
+    const backfilled = await backfillSourceCategory(purchases, ownerId);
     if (backfilled > 0) {
       console.log(`${backfilled} compras antigas ganharam \`sourceCategory\`.`);
     }
 
-    const userRules = await loadRules(rules);
+    const userRules = await loadRules(rules, ownerId);
     const { classified, restored, financing } = await reapplyRules(
-      createPurchaseStore(purchases),
+      createPurchaseStore(purchases, ownerId),
       userRules,
     );
 
