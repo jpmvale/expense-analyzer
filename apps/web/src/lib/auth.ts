@@ -12,13 +12,20 @@ export interface AuthContextValue {
   checking: boolean;
   /** O nome de quem está logado, ou `null` fora de uma sessão. */
   username: string | null;
+  /** O e-mail da conta. `null` nas contas anteriores ao campo. */
+  email: string | null;
   /**
    * Se esta conta é a dona da instância — a única com Google Drive configurado.
    * As demais sobem as faturas pela tela de Importar.
    */
   isOwner: boolean;
   signIn: (username: string, password: string) => Promise<void>;
-  signUp: (username: string, password: string, inviteCode: string) => Promise<void>;
+  signUp: (
+    username: string,
+    email: string,
+    password: string,
+    inviteCode: string,
+  ) => Promise<void>;
   signOut: () => Promise<void>;
 }
 

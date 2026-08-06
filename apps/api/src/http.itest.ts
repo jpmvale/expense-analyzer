@@ -57,7 +57,12 @@ describe('API HTTP', () => {
     it('recusa sem o código de convite certo', async () => {
       await request(testApp.server)
         .post('/auth/register')
-        .send({ username: 'invasor', password: 'senha-comprida', inviteCode: 'chute' })
+        .send({
+          username: 'invasor',
+          email: 'invasor@teste.invalido',
+          password: 'senha-comprida',
+          inviteCode: 'chute',
+        })
         .expect(403);
 
       // E a conta não nasce: o convite é checado antes de qualquer escrita.
@@ -70,7 +75,19 @@ describe('API HTTP', () => {
     it('recusa senha curta demais (ValidationPipe)', async () => {
       await request(testApp.server)
         .post('/auth/register')
-        .send({ username: 'curta', password: 'abc', inviteCode: TEST_INVITE_CODE })
+        .send({
+          username: 'curta',
+          email: 'curta@teste.invalido',
+          password: 'abc',
+          inviteCode: TEST_INVITE_CODE,
+        })
+        .expect(400);
+    });
+
+    it('recusa cadastro sem e-mail, que é o caminho de volta da conta', async () => {
+      await request(testApp.server)
+        .post('/auth/register')
+        .send({ username: 'sem-email', password: 'senha-comprida', inviteCode: TEST_INVITE_CODE })
         .expect(400);
     });
 
@@ -80,6 +97,7 @@ describe('API HTTP', () => {
         .post('/auth/register')
         .send({
           username: 'recem-chegada',
+          email: 'recem-chegada@teste.invalido',
           password: 'senha-comprida',
           inviteCode: TEST_INVITE_CODE,
         })
@@ -87,7 +105,115 @@ describe('API HTTP', () => {
 
       assert.equal(res.body.authenticated, true);
       assert.equal(res.body.username, 'recem-chegada');
+      assert.equal(res.body.email, 'recem-chegada@teste.invalido');
       await agent.get('/category').expect(200);
+    });
+  });
+
+  describe('trocar a senha logado', () => {
+    it('recusa com a senha atual errada', async () => {
+      const agent = await registerAgent(testApp, 'troca-recusada');
+
+      await agent
+        .post('/auth/change-password')
+        .send({ currentPassword: 'chute', newPassword: 'senha-nova-boa' })
+        .expect(401);
+    });
+
+    it('exige sessão', async () => {
+      await request(testApp.server)
+        .post('/auth/change-password')
+        .send({ currentPassword: 'qualquer', newPassword: 'senha-nova-boa' })
+        .expect(401);
+    });
+
+    /**
+     * A garantia que faz a troca valer: quem já estava dentro com a senha antiga
+     * cai, e quem trocou continua. Sem a primeira metade, trocar a senha depois
+     * de ela vazar não expulsa ninguém.
+     */
+    it('derruba a outra sessão da conta e mantém a de quem trocou', async () => {
+      const senha = 'senha-de-teste-nao-e-a-real';
+      const primeira = await registerAgent(testApp, 'duas-sessoes', senha);
+      const segunda = request.agent(testApp.server);
+      await segunda.post('/auth/login').send({ username: 'duas-sessoes', password: senha }).expect(201);
+
+      await primeira
+        .post('/auth/change-password')
+        .send({ currentPassword: senha, newPassword: 'senha-nova-boa' })
+        .expect(200);
+
+      await primeira.get('/category').expect(200);
+      await segunda.get('/category').expect(401);
+
+      // E a senha nova é a que vale dali em diante.
+      await request(testApp.server)
+        .post('/auth/login')
+        .send({ username: 'duas-sessoes', password: senha })
+        .expect(401);
+      await request(testApp.server)
+        .post('/auth/login')
+        .send({ username: 'duas-sessoes', password: 'senha-nova-boa' })
+        .expect(201);
+    });
+  });
+
+  describe('esqueci minha senha', () => {
+    /** O token de dentro do link — o banco só tem o hash dele. */
+    function tokenDoUltimoEmail(): string {
+      const ultimo = testApp.emails.at(-1);
+      const match = ultimo?.text.match(/redefinir\?token=([A-Za-z0-9_-]+)/);
+      if (!match) throw new Error('o último e-mail não trouxe link de redefinição');
+      return match[1];
+    }
+
+    /**
+     * A defesa contra enumeração: a resposta é a mesma para endereço com e sem
+     * conta. Se diferisse, um laço sobre uma lista de e-mails revelaria quem tem
+     * conta nesta instância.
+     */
+    it('responde 204 para e-mail que não é de ninguém, e não manda nada', async () => {
+      const antes = testApp.emails.length;
+
+      await request(testApp.server)
+        .post('/auth/forgot-password')
+        .send({ email: 'ninguem@teste.invalido' })
+        .expect(204);
+
+      assert.equal(testApp.emails.length, antes);
+    });
+
+    it('vai do link do e-mail até entrar com a senha nova', async () => {
+      await registerAgent(testApp, 'esquecida');
+
+      await request(testApp.server)
+        .post('/auth/forgot-password')
+        .send({ email: 'esquecida@teste.invalido' })
+        .expect(204);
+
+      const token = tokenDoUltimoEmail();
+      await request(testApp.server)
+        .post('/auth/reset-password')
+        .send({ token, newPassword: 'senha-redefinida' })
+        .expect(204);
+
+      await request(testApp.server)
+        .post('/auth/login')
+        .send({ username: 'esquecida', password: 'senha-redefinida' })
+        .expect(201);
+
+      // E o mesmo link não serve duas vezes.
+      await request(testApp.server)
+        .post('/auth/reset-password')
+        .send({ token, newPassword: 'mais-uma-senha' })
+        .expect(400);
+    });
+
+    it('recusa token inventado', async () => {
+      await request(testApp.server)
+        .post('/auth/reset-password')
+        .send({ token: 'nao-existe', newPassword: 'senha-redefinida' })
+        .expect(400);
     });
   });
 

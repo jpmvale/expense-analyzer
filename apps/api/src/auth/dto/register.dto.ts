@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ example: 'ana' })
@@ -7,6 +7,15 @@ export class RegisterDto {
   @IsNotEmpty()
   @MaxLength(40)
   username: string;
+
+  /**
+   * Obrigatório porque é o único caminho de volta para quem esquece a senha:
+   * sem endereço, recuperar a conta vira um pedido a quem tem acesso ao banco.
+   */
+  @ApiProperty({ example: 'ana@exemplo.com' })
+  @IsEmail()
+  @MaxLength(200)
+  email: string;
 
   /**
    * Oito caracteres é o piso, e não uma opinião sobre senha forte: sem mínimo

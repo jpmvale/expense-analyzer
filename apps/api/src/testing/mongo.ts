@@ -21,6 +21,11 @@ import {
   SubscriptionDocument,
   SubscriptionSchema,
 } from '../schemas/subscription.schema';
+import {
+  PasswordReset,
+  PasswordResetDocument,
+  PasswordResetSchema,
+} from '../schemas/password-reset.schema';
 import { User, UserDocument, UserSchema } from '../schemas/user.schema';
 
 /**
@@ -48,6 +53,12 @@ export interface TestDb {
   subscriptions: Model<SubscriptionDocument>;
   runs: Model<SyncRunDocument>;
   users: Model<UserDocument>;
+  resets: Model<PasswordResetDocument>;
+  /**
+   * A conexão em si, para os serviços que falam com o banco fora dos `Model` —
+   * o `AuthService` apaga sessões direto na coleção do `connect-mongo`.
+   */
+  connection: Connection;
   /** Esvazia as coleções entre um teste e outro, sem derrubar o servidor. */
   clear(): Promise<void>;
   stop(): Promise<void>;
@@ -87,6 +98,11 @@ export async function startTestDb(): Promise<TestDb> {
   );
   const runs = modelFor<SyncRunDocument>(connection, SyncRun.name, SyncRunSchema);
   const users = modelFor<UserDocument>(connection, User.name, UserSchema);
+  const resets = modelFor<PasswordResetDocument>(
+    connection,
+    PasswordReset.name,
+    PasswordResetSchema,
+  );
 
   // O índice único de (kind, value) é parte do contrato da coleção de regras, e
   // o Mongoose só o cria em segundo plano — sem esperar, o primeiro teste que
@@ -99,6 +115,7 @@ export async function startTestDb(): Promise<TestDb> {
     subscriptions.init(),
     runs.init(),
     users.init(),
+    resets.init(),
   ]);
 
   return {
@@ -109,6 +126,8 @@ export async function startTestDb(): Promise<TestDb> {
     subscriptions,
     runs,
     users,
+    resets,
+    connection,
     async clear() {
       await Promise.all([
         purchases.deleteMany({}),
@@ -118,6 +137,7 @@ export async function startTestDb(): Promise<TestDb> {
         subscriptions.deleteMany({}),
         runs.deleteMany({}),
         users.deleteMany({}),
+        resets.deleteMany({}),
       ]);
     },
     async stop() {

@@ -252,10 +252,35 @@ export function login(username: string, password: string): Promise<Session> {
  */
 export function register(
   username: string,
+  email: string,
   password: string,
   inviteCode: string,
 ): Promise<Session> {
-  return sendJson('POST', '/auth/register', { username, password, inviteCode });
+  return sendJson('POST', '/auth/register', { username, email, password, inviteCode });
+}
+
+/**
+ * Troca a senha de quem está logado. Devolve quantas **outras** sessões caíram
+ * — a desta aba continua de pé.
+ */
+export function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ sessionsEncerradas: number }> {
+  return sendJson('POST', '/auth/change-password', { currentPassword, newPassword });
+}
+
+/**
+ * Pede o link de redefinição. Responde igual exista ou não a conta — de
+ * propósito, e é por isso que a tela não pode dizer "e-mail não encontrado".
+ */
+export function forgotPassword(email: string): Promise<void> {
+  return sendJson('POST', '/auth/forgot-password', { email });
+}
+
+/** Fecha a redefinição com o token que veio no link do e-mail. */
+export function resetPassword(token: string, newPassword: string): Promise<void> {
+  return sendJson('POST', '/auth/reset-password', { token, newPassword });
 }
 
 export function logout(): Promise<void> {

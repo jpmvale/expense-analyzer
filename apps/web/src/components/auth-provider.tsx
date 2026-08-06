@@ -3,7 +3,12 @@ import { getSession, login, logout, register } from '@/api/client';
 import type { Session } from '@/interface/session';
 import { AuthContext, type AuthContextValue } from '@/lib/auth';
 
-const ANONIMO: Session = { authenticated: false, username: null, isOwner: false };
+const ANONIMO: Session = {
+  authenticated: false,
+  username: null,
+  email: null,
+  isOwner: false,
+};
 
 /**
  * Verifica a sessão uma vez, na montagem — o cookie httpOnly não dá pra ler do
@@ -28,9 +33,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Cadastrar já entra: a API abre a sessão na resposta do `POST /auth/register`,
   // então não há um segundo passo de login para o usuário.
-  const signUp = useCallback(async (username: string, password: string, inviteCode: string) => {
-    setSession(await register(username, password, inviteCode));
-  }, []);
+  const signUp = useCallback(
+    async (username: string, email: string, password: string, inviteCode: string) => {
+      setSession(await register(username, email, password, inviteCode));
+    },
+    [],
+  );
 
   const signOut = useCallback(async () => {
     await logout();
@@ -41,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       authenticated: session.authenticated,
       username: session.username,
+      email: session.email,
       isOwner: session.isOwner,
       checking,
       signIn,

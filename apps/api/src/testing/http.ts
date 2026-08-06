@@ -12,6 +12,7 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import request = require('supertest');
 import { AppModule } from '../app.module';
+import { MailerService, type Email } from '../mail/mailer.service';
 
 /**
  * A API inteira, de pé, contra um MongoDB real em memória — a camada que os
@@ -47,6 +48,14 @@ export interface TestApp {
    * as credenciais do `.env` real; a conta nem existe até alguém cadastrá-la.
    */
   credentials: { username: string; password: string };
+  /**
+   * Os e-mails que a app teria mandado, na ordem.
+   *
+   * É o único caminho até o token de redefinição: o banco guarda só o SHA-256
+   * dele, de propósito. Sem isto, testar o fluxo de "esqueci minha senha" por
+   * HTTP seria impossível sem furar a própria proteção que o torna seguro.
+   */
+  emails: Email[];
   stop(): Promise<void>;
 }
 
@@ -108,10 +117,22 @@ export async function startTestApp(): Promise<TestApp> {
     throw new Error('MONGO_URI não apontou para o banco de teste — abortando antes de rodar nada.');
   }
 
+  // Intercepta o envio na instância que o container já resolveu, em vez de
+  // sobrepor o provider: o `MailerService` real, sem credencial, também não
+  // manda nada — ele escreve no log. O que falta é **ler** o que ele mandaria,
+  // e o token de redefinição só existe nesse texto.
+  const emails: Email[] = [];
+  const mailer = app.get(MailerService);
+  mailer.send = (email: Email) => {
+    emails.push(email);
+    return Promise.resolve();
+  };
+
   return {
     app,
     server: app.getHttpServer(),
     credentials: { username: TEST_USERNAME, password: TEST_PASSWORD },
+    emails,
     async stop() {
       await app.close();
       await store.close();
@@ -132,11 +153,12 @@ export async function registerAgent(
   testApp: TestApp,
   username: string,
   password = TEST_PASSWORD,
+  email = emailDe(username),
 ): Promise<ReturnType<typeof request.agent>> {
   const agent = request.agent(testApp.server);
   const created = await agent
     .post('/auth/register')
-    .send({ username, password, inviteCode: TEST_INVITE_CODE });
+    .send({ username, email, password, inviteCode: TEST_INVITE_CODE });
 
   if (created.status === 409) {
     await agent.post('/auth/login').send({ username, password }).expect(201);
@@ -145,6 +167,17 @@ export async function registerAgent(
   }
 
   return agent;
+}
+
+/**
+ * Um e-mail derivado do nome, para os testes que não se importam com qual é.
+ *
+ * O cadastro exige endereço e o índice é único, então dois agentes com o mesmo
+ * e-mail colidiriam — derivar do nome, que já é único, resolve sem que cada
+ * teste precise inventar um.
+ */
+export function emailDe(username: string): string {
+  return `${username}@teste.invalido`;
 }
 
 /** Um agente logado como a conta dona da instância. */

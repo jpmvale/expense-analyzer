@@ -12,6 +12,7 @@
     "start": "node dist/main",
     "hash-password": "tsx src/auth/hash-password.ts",
     "migrate:multiuser": "tsx src/migrations/add-user-id.ts",
+    "set-email": "tsx src/migrations/set-email.ts",
     "debug": "nest start --debug --watch",
     "format": "prettier --write \"src/**/*.ts\"",
     "lint": "eslint src",

@@ -27,6 +27,18 @@ export class User {
   @Prop({ type: String, required: true })
   username: string;
 
+  /**
+   * Para onde vai o link de redefinição de senha. Guardado em minúsculas, como o
+   * nome, e é assim que "esqueci minha senha" procura a conta.
+   *
+   * Obrigatório no cadastro, mas **opcional no schema**: as contas criadas antes
+   * de o campo existir não têm endereço nenhum, e exigi-lo aqui quebraria toda
+   * gravação nelas — inclusive a da própria troca de senha. Uma conta sem e-mail
+   * funciona para tudo, menos redefinir.
+   */
+  @Prop({ type: String })
+  email?: string;
+
   /** bcrypt, custo 12 — o mesmo do script `hash-password`. */
   @Prop({ type: String, required: true })
   passwordHash: string;
@@ -37,3 +49,12 @@ export class User {
 export const UserSchema = SchemaFactory.createForClass(User);
 
 UserSchema.index({ username: 1 }, { unique: true });
+
+// Único **parcial**, e não único e pronto: as contas anteriores ao campo não têm
+// `email`, e para um índice único comum elas colidem entre si — dois documentos
+// sem o campo valem ambos como `null`, e a criação do índice falha na subida da
+// API com um erro de chave duplicada que não menciona a causa.
+UserSchema.index(
+  { email: 1 },
+  { unique: true, partialFilterExpression: { email: { $exists: true } } },
+);

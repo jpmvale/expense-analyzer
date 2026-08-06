@@ -56,6 +56,12 @@ services:
       # o cron de outra.
       GOOGLE_CREDENTIALS_PATH: /secrets/drive-credentials.json
       GOOGLE_TOKEN_PATH: /secrets/token.json
+      # Endereço que a pessoa abre no navegador, para montar o link do e-mail de
+      # redefinição. Não é o da API: o front está na raiz e a API sob `/api`.
+      APP_URL: https://expenses.imp-software.cloud
+      # As credenciais do Resend, que já existem na máquina para os alertas dos
+      # jobs de cron — veja a montagem logo abaixo.
+      MAIL_ENV_FILE: /secrets/alerta.env
     volumes:
       # O `token.json` é montado GRAVÁVEL também aqui: a biblioteca do Google
       # reescreve o arquivo ao renovar o access token expirado, e montá-lo `:ro`
@@ -63,6 +69,13 @@ services:
       # escrita — que não tem nada a ver com a causa e é péssimo de diagnosticar.
       - ./secrets/drive-credentials.json:/secrets/drive-credentials.json:ro
       - ./secrets/token.json:/secrets/token.json
+      # A chave do Resend fica onde sempre esteve, e é montada em vez de copiada
+      # para o `.env.prod`: o mesmo segredo em dois arquivos significa trocar num
+      # e esquecer o outro. Montado como ARQUIVO, e não listado em `env_file:`,
+      # porque o `EMAIL_FROM` de lá tem o formato `nome <endereço>` entre aspas
+      # — o parser do compose e o do shell discordam sobre o que fazer com elas,
+      # e a API lê o arquivo ela mesma com `process.loadEnvFile`.
+      - /home/deploy/.config/alerta.env:/secrets/alerta.env:ro
     networks:
       - internal
       - edge
