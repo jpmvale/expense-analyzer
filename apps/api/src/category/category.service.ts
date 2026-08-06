@@ -8,7 +8,7 @@ import {
 } from '@expense/categorization';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Category, CategoryDocument } from '../schemas/category.schema';
 import { CategoryRule, CategoryRuleDocument } from '../schemas/category-rule.schema';
 import {
@@ -99,15 +99,15 @@ export class CategoryService {
    * receber compras — a lista já esteve mais curta que isso, e o custo era não
    * haver como mandar um "IOF de compra internacional" para `impostos`.
    */
-  async listCategories(): Promise<CategorySummary[]> {
+  async listCategories(userId: Types.ObjectId): Promise<CategorySummary[]> {
     const [counts, created] = await Promise.all([
       this.purchaseModel
         .aggregate<{ _id: string; count: number }>([
-          { $match: { category: { $ne: PAYMENT_CATEGORY } } },
+          { $match: { userId, category: { $ne: PAYMENT_CATEGORY } } },
           { $group: { _id: '$category', count: { $sum: 1 } } },
         ])
         .exec(),
-      this.categoryModel.find().exec(),
+      this.categoryModel.find({ userId }).exec(),
     ]);
 
     const byName = new Map<string, number>(counts.map(({ _id, count }) => [_id, count]));
@@ -120,17 +120,22 @@ export class CategoryService {
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }
 
-  async createCategory({ name }: CreateCategoryDto): Promise<CategorySummary> {
+  async createCategory(
+    userId: Types.ObjectId,
+    { name }: CreateCategoryDto,
+  ): Promise<CategorySummary> {
     const clean = name.trim();
     if (clean === '') throw new ConflictException('A categoria precisa de um nome.');
     if (isReservedCategory(clean)) {
-      throw new ConflictException(`"${clean}" é o pagamento da fatura, não uma categoria de gasto.`);
+      throw new ConflictException(
+        `"${clean}" é o pagamento da fatura, não uma categoria de gasto.`,
+      );
     }
 
-    const existing = await this.findCategoryByName(clean);
+    const existing = await this.findCategoryByName(userId, clean);
     if (existing) throw new ConflictException(`A categoria "${existing}" já existe.`);
 
-    await this.categoryModel.create({ name: clean });
+    await this.categoryModel.create({ userId, name: clean });
     return { name: clean, purchaseCount: 0 };
   }
 
@@ -142,7 +147,11 @@ export class CategoryService {
    * Por isso os dois campos são renomeados, junto das regras que apontavam para
    * o nome antigo.
    */
-  async renameCategory(from: string, { name }: RenameCategoryDto): Promise<CategorySummary> {
+  async renameCategory(
+    userId: Types.ObjectId,
+    from: string,
+    { name }: RenameCategoryDto,
+  ): Promise<CategorySummary> {
     const to = name.trim();
     if (to === '') throw new ConflictException('A categoria precisa de um nome.');
     if (isReservedCategory(from) || isReservedCategory(to)) {
@@ -151,29 +160,29 @@ export class CategoryService {
     // Só o nome idêntico é no-op. Trocar apenas a caixa — "casa" para "Casa" —
     // é uma renomeação de verdade, e comparar normalizado a engoliria em
     // silêncio, deixando a tela mostrando o nome antigo.
-    if (from === to) return this.summaryFor(to);
+    if (from === to) return this.summaryFor(userId, to);
 
-    const known = await this.listCategories();
+    const known = await this.listCategories(userId);
     if (!known.some((category) => category.name === from)) {
       throw new NotFoundException(`Categoria "${from}" não encontrada.`);
     }
 
     await Promise.all([
-      this.purchaseModel.updateMany({ category: from }, { $set: { category: to } }).exec(),
+      this.purchaseModel.updateMany({ userId, category: from }, { $set: { category: to } }).exec(),
       this.purchaseModel
-        .updateMany({ sourceCategory: from }, { $set: { sourceCategory: to } })
+        .updateMany({ userId, sourceCategory: from }, { $set: { sourceCategory: to } })
         .exec(),
-      this.ruleModel.updateMany({ category: from }, { $set: { category: to } }).exec(),
+      this.ruleModel.updateMany({ userId, category: from }, { $set: { category: to } }).exec(),
     ]);
 
     // Some com o registro antigo. Numa mescla o destino já existe (ou existe só
     // nas compras), então o novo é criado apenas se ninguém o representa ainda.
-    await this.categoryModel.deleteOne({ name: from }).exec();
-    if (!(await this.categoryModel.exists({ name: to }))) {
-      await this.categoryModel.create({ name: to });
+    await this.categoryModel.deleteOne({ userId, name: from }).exec();
+    if (!(await this.categoryModel.exists({ userId, name: to }))) {
+      await this.categoryModel.create({ userId, name: to });
     }
 
-    return this.summaryFor(to);
+    return this.summaryFor(userId, to);
   }
 
   /**
@@ -181,25 +190,26 @@ export class CategoryService {
    * apontando para um nome que sumiu da lista — o estado que a tela não sabe
    * mostrar. Para esvaziar uma categoria, mescle-a em outra.
    */
-  async deleteCategory(name: string): Promise<void> {
-    const purchases = await this.purchaseModel.countDocuments({ category: name }).exec();
+  async deleteCategory(userId: Types.ObjectId, name: string): Promise<void> {
+    const purchases = await this.purchaseModel.countDocuments({ userId, category: name }).exec();
     if (purchases > 0) {
       throw new ConflictException(
         `"${name}" tem ${purchases} compras. Renomeie-a para outra categoria em vez de apagar.`,
       );
     }
 
-    const rules = await this.ruleModel.countDocuments({ category: name }).exec();
+    const rules = await this.ruleModel.countDocuments({ userId, category: name }).exec();
     if (rules > 0) {
       throw new ConflictException(`"${name}" ainda é destino de ${rules} regras.`);
     }
 
-    const result = await this.categoryModel.deleteOne({ name }).exec();
-    if (result.deletedCount === 0) throw new NotFoundException(`Categoria "${name}" não encontrada.`);
+    const result = await this.categoryModel.deleteOne({ userId, name }).exec();
+    if (result.deletedCount === 0)
+      throw new NotFoundException(`Categoria "${name}" não encontrada.`);
   }
 
-  listRules(): Promise<CategoryRuleDocument[]> {
-    return this.ruleModel.find().sort({ updatedAt: -1 }).exec();
+  listRules(userId: Types.ObjectId): Promise<CategoryRuleDocument[]> {
+    return this.ruleModel.find({ userId }).sort({ updatedAt: -1 }).exec();
   }
 
   /**
@@ -209,10 +219,10 @@ export class CategoryService {
    * `$first`: a ordem dentro de um grupo do Mongo não é definida, e um título
    * que apareça em duas categorias devolveria uma ou outra conforme o dia.
    */
-  private async titleRows(): Promise<TitleRow[]> {
+  private async titleRows(userId: Types.ObjectId): Promise<TitleRow[]> {
     const rows = await this.purchaseModel
       .aggregate<{ _id: string; category: string; purchases: number }>([
-        { $match: { sourceCategory: { $ne: PAYMENT_CATEGORY } } },
+        { $match: { userId, sourceCategory: { $ne: PAYMENT_CATEGORY } } },
         { $group: { _id: { title: '$title', category: '$category' }, n: { $sum: 1 } } },
         { $sort: { n: -1 } },
         {
@@ -235,8 +245,8 @@ export class CategoryService {
    * carrega a base e qual sobrou de uma classificação isolada de 2019, nem o
    * que se perde ao apagar uma.
    */
-  async listRuleUsage(): Promise<RuleUsage[]> {
-    const [rules, titles] = await Promise.all([this.listRules(), this.titleRows()]);
+  async listRuleUsage(userId: Types.ObjectId): Promise<RuleUsage[]> {
+    const [rules, titles] = await Promise.all([this.listRules(userId), this.titleRows(userId)]);
 
     const byRule = new Map<string, { purchases: number; titles: number }>();
     for (const { title, purchases } of titles) {
@@ -273,11 +283,11 @@ export class CategoryService {
    * dizer que existem nem como desfazer o descarte — e uma decisão que não dá
    * para rever é pior que o incômodo que ela resolve.
    */
-  async listConsolidations(): Promise<ConsolidationSuggestionView[]> {
+  async listConsolidations(userId: Types.ObjectId): Promise<ConsolidationSuggestionView[]> {
     const [rules, titles, dismissed] = await Promise.all([
-      this.listRules(),
-      this.titleRows(),
-      this.dismissalModel.find().exec(),
+      this.listRules(userId),
+      this.titleRows(userId),
+      this.dismissalModel.find({ userId }).exec(),
     ]);
 
     const hidden = new Set(dismissed.map(({ category, value }) => dismissalKey(category, value)));
@@ -297,15 +307,25 @@ export class CategoryService {
    *
    * O descarte não impede consolidar depois: some da lista, não da API.
    */
-  async dismissConsolidation({ category, value }: DismissConsolidationDto): Promise<void> {
+  async dismissConsolidation(
+    userId: Types.ObjectId,
+    { category, value }: DismissConsolidationDto,
+  ): Promise<void> {
     await this.dismissalModel
-      .updateOne({ category, value }, { $setOnInsert: { category, value } }, { upsert: true })
+      .updateOne(
+        { userId, category, value },
+        { $setOnInsert: { userId, category, value } },
+        { upsert: true },
+      )
       .exec();
   }
 
   /** Devolve a sugestão à lista. Descartar o que não devia é barato de desfazer. */
-  async restoreConsolidation({ category, value }: DismissConsolidationDto): Promise<void> {
-    await this.dismissalModel.deleteOne({ category, value }).exec();
+  async restoreConsolidation(
+    userId: Types.ObjectId,
+    { category, value }: DismissConsolidationDto,
+  ): Promise<void> {
+    await this.dismissalModel.deleteOne({ userId, category, value }).exec();
   }
 
   /**
@@ -316,7 +336,10 @@ export class CategoryService {
    * por data faria a antiga virar lixo silencioso. A comparação é normalizada
    * porque o emissor alterna a caixa do mesmo estabelecimento entre os meses.
    */
-  async upsertRule(dto: CreateRuleDto): Promise<{ rule: CategoryRuleDocument } & ReapplyResult> {
+  async upsertRule(
+    userId: Types.ObjectId,
+    dto: CreateRuleDto,
+  ): Promise<{ rule: CategoryRuleDocument } & ReapplyResult> {
     const value = dto.value.trim();
     const category = dto.category.trim();
 
@@ -327,7 +350,7 @@ export class CategoryService {
       );
     }
 
-    const existing = (await this.ruleModel.find({ kind: dto.kind }).exec()).find(
+    const existing = (await this.ruleModel.find({ userId, kind: dto.kind }).exec()).find(
       (rule) => normalize(rule.value) === normalize(value),
     );
 
@@ -335,15 +358,15 @@ export class CategoryService {
       ? await this.ruleModel
           .findByIdAndUpdate(existing._id, { $set: { value, category } }, { new: true })
           .exec()
-      : await this.ruleModel.create({ kind: dto.kind, value, category });
+      : await this.ruleModel.create({ userId, kind: dto.kind, value, category });
 
     // Uma categoria usada por uma regra passa a existir na lista mesmo antes de
     // qualquer compra cair nela — senão ela sumiria do seletor até a reaplicação.
-    if (!(await this.categoryModel.exists({ name: category }))) {
-      await this.categoryModel.create({ name: category });
+    if (!(await this.categoryModel.exists({ userId, name: category }))) {
+      await this.categoryModel.create({ userId, name: category });
     }
 
-    return { rule, ...(await this.reapply()) };
+    return { rule, ...(await this.reapply(userId)) };
   }
 
   /**
@@ -360,7 +383,11 @@ export class CategoryService {
    * `sourceCategory` ou passa a obedecer outra regra que já existia, a mesma
    * escada de sempre.
    */
-  async editRule(id: string, dto: CreateRuleDto): Promise<{ rule: CategoryRuleDocument } & ReapplyResult> {
+  async editRule(
+    userId: Types.ObjectId,
+    id: string,
+    dto: CreateRuleDto,
+  ): Promise<{ rule: CategoryRuleDocument } & ReapplyResult> {
     const value = dto.value.trim();
     const category = dto.category.trim();
 
@@ -371,16 +398,19 @@ export class CategoryService {
       );
     }
 
-    const current = await this.ruleModel.findById(id).exec();
+    // `findOne({ _id, userId })`, e não `findById`: com o id na URL, buscar só
+    // pelo `_id` deixaria um usuário editar a regra de outro digitando o id
+    // certo — e a resposta seria 200, não 404.
+    const current = await this.ruleModel.findOne({ _id: id, userId }).exec();
     if (!current) throw new NotFoundException('Regra não encontrada.');
 
     // Duas regras para o mesmo par `(kind, value)` só se contradiriam — o mesmo
     // motivo que faz `upsertRule` editar em vez de duplicar. Aqui, como o `_id`
     // já está fixado numa regra diferente, a saída é recusar em vez de escolher
     // qual das duas prevalece.
-    const collision = (await this.ruleModel.find({ kind: dto.kind, _id: { $ne: id } }).exec()).find(
-      (rule) => normalize(rule.value) === normalize(value),
-    );
+    const collision = (
+      await this.ruleModel.find({ userId, kind: dto.kind, _id: { $ne: id } }).exec()
+    ).find((rule) => normalize(rule.value) === normalize(value));
     if (collision) {
       throw new ConflictException(
         `Já existe uma regra ${dto.kind === 'exact' ? 'exata' : 'por trecho'} para "${value}".`,
@@ -388,15 +418,19 @@ export class CategoryService {
     }
 
     const rule = await this.ruleModel
-      .findByIdAndUpdate(id, { $set: { kind: dto.kind, value, category } }, { new: true })
+      .findOneAndUpdate(
+        { _id: id, userId },
+        { $set: { kind: dto.kind, value, category } },
+        { new: true },
+      )
       .exec();
     if (!rule) throw new NotFoundException('Regra não encontrada.');
 
-    if (!(await this.categoryModel.exists({ name: category }))) {
-      await this.categoryModel.create({ name: category });
+    if (!(await this.categoryModel.exists({ userId, name: category }))) {
+      await this.categoryModel.create({ userId, name: category });
     }
 
-    return { rule, ...(await this.reapply()) };
+    return { rule, ...(await this.reapply(userId)) };
   }
 
   /**
@@ -423,19 +457,18 @@ export class CategoryService {
    * la. Um conflito de 1 ou 2 títulos deixa de exigir abrir mão do resto da
    * consolidação.
    */
-  async consolidate({
-    value,
-    category,
-    exceptions = [],
-  }: ConsolidateDto): Promise<{ created: number; deleted: number; exceptions: number } & ReapplyResult> {
+  async consolidate(
+    userId: Types.ObjectId,
+    { value, category, exceptions = [] }: ConsolidateDto,
+  ): Promise<{ created: number; deleted: number; exceptions: number } & ReapplyResult> {
     const trecho = value.trim();
     if (trecho === '') throw new ConflictException('O trecho não pode ser vazio.');
     if (isReservedCategory(category)) {
       throw new ConflictException(`"${category}" é o pagamento da fatura, não uma categoria.`);
     }
 
-    const covered = (await this.ruleModel.find({ kind: 'exact', category }).exec()).filter((rule) =>
-      normalize(rule.value).includes(normalize(trecho)),
+    const covered = (await this.ruleModel.find({ userId, kind: 'exact', category }).exec()).filter(
+      (rule) => normalize(rule.value).includes(normalize(trecho)),
     );
 
     // Upsert, e não `create`: o título já não tem regra `exact` própria — é
@@ -445,8 +478,10 @@ export class CategoryService {
       await this.ruleModel.bulkWrite(
         exceptions.map(({ title, category: exceptionCategory }) => ({
           updateOne: {
-            filter: { kind: 'exact', value: title },
-            update: { $setOnInsert: { kind: 'exact', value: title, category: exceptionCategory } },
+            filter: { userId, kind: 'exact', value: title },
+            update: {
+              $setOnInsert: { userId, kind: 'exact', value: title, category: exceptionCategory },
+            },
             upsert: true,
           },
         })),
@@ -455,28 +490,32 @@ export class CategoryService {
 
     await this.ruleModel
       .updateOne(
-        { kind: 'contains', value: trecho },
-        { $set: { kind: 'contains', value: trecho, category } },
+        { userId, kind: 'contains', value: trecho },
+        { $set: { userId, kind: 'contains', value: trecho, category } },
         { upsert: true },
       )
       .exec();
 
     if (covered.length > 0) {
-      await this.ruleModel.deleteMany({ _id: { $in: covered.map((rule) => rule._id) } }).exec();
+      await this.ruleModel
+        .deleteMany({ userId, _id: { $in: covered.map((rule) => rule._id) } })
+        .exec();
     }
 
     return {
       created: 1,
       deleted: covered.length,
       exceptions: exceptions.length,
-      ...(await this.reapply()),
+      ...(await this.reapply(userId)),
     };
   }
 
-  async deleteRule(id: string): Promise<ReapplyResult> {
-    const result = await this.ruleModel.findByIdAndDelete(id).exec();
+  async deleteRule(userId: Types.ObjectId, id: string): Promise<ReapplyResult> {
+    // Pelo par, e não por `findByIdAndDelete`: um id de outro usuário tem de
+    // dar 404, e não apagar a regra dele.
+    const result = await this.ruleModel.findOneAndDelete({ _id: id, userId }).exec();
     if (!result) throw new NotFoundException('Regra não encontrada.');
-    return this.reapply();
+    return this.reapply(userId);
   }
 
   /**
@@ -488,19 +527,24 @@ export class CategoryService {
    * significa que ela pode rodar de novo depois de um `pnpm extract` sem que a
    * ordem das duas importe.
    */
-  reapply(): Promise<ReapplyResult> {
-    return this.listRules().then((rules) =>
-      reapplyRules(createPurchaseStore(this.purchaseModel), rules),
+  reapply(userId: Types.ObjectId): Promise<ReapplyResult> {
+    return this.listRules(userId).then((rules) =>
+      reapplyRules(createPurchaseStore(this.purchaseModel, userId), rules),
     );
   }
 
-  private async findCategoryByName(name: string): Promise<string | undefined> {
-    const known = await this.listCategories();
+  private async findCategoryByName(
+    userId: Types.ObjectId,
+    name: string,
+  ): Promise<string | undefined> {
+    const known = await this.listCategories(userId);
     return known.find((category) => normalize(category.name) === normalize(name))?.name;
   }
 
-  private async summaryFor(name: string): Promise<CategorySummary> {
-    const purchaseCount = await this.purchaseModel.countDocuments({ category: name }).exec();
+  private async summaryFor(userId: Types.ObjectId, name: string): Promise<CategorySummary> {
+    const purchaseCount = await this.purchaseModel
+      .countDocuments({ userId, category: name })
+      .exec();
     return { name, purchaseCount };
   }
 }

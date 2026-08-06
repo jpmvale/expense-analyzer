@@ -1,8 +1,8 @@
 /**
- * Sessão do único usuário do app.
+ * A sessão do usuário logado.
  *
  * A API guarda a sessão num cookie httpOnly — o front nunca vê um token, só
- * pergunta `GET /auth/session` e recebe sim/não. `checking` existe para não
+ * pergunta `GET /auth/session` e recebe quem é. `checking` existe para não
  * piscar a tela de login no primeiro instante, antes da resposta chegar.
  */
 import { createContext } from 'react';
@@ -10,7 +10,15 @@ import { createContext } from 'react';
 export interface AuthContextValue {
   authenticated: boolean;
   checking: boolean;
+  /** O nome de quem está logado, ou `null` fora de uma sessão. */
+  username: string | null;
+  /**
+   * Se esta conta é a dona da instância — a única com Google Drive configurado.
+   * As demais sobem as faturas pela tela de Importar.
+   */
+  isOwner: boolean;
   signIn: (username: string, password: string) => Promise<void>;
+  signUp: (username: string, password: string, inviteCode: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 

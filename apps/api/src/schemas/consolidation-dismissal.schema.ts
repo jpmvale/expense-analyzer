@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
 
 export type ConsolidationDismissalDocument = HydratedDocument<ConsolidationDismissal>;
 
@@ -13,8 +13,15 @@ export type ConsolidationDismissalDocument = HydratedDocument<ConsolidationDismi
  * `type` explícito nos dois campos: o `emitDecoratorMetadata` só existe sob o
  * compilador do TypeScript, e os testes rodam sob esbuild, que não o emite.
  */
-@Schema({ collection: 'consolidationDismissals', timestamps: { createdAt: true, updatedAt: false } })
+@Schema({
+  collection: 'consolidationDismissals',
+  timestamps: { createdAt: true, updatedAt: false },
+})
 export class ConsolidationDismissal {
+  /** De quem é este descarte — o `_id` na coleção `users`. */
+  @Prop({ type: SchemaTypes.ObjectId, required: true })
+  userId: Types.ObjectId;
+
   @Prop({ type: String, required: true })
   category: string;
 
@@ -25,4 +32,4 @@ export class ConsolidationDismissal {
 
 export const ConsolidationDismissalSchema = SchemaFactory.createForClass(ConsolidationDismissal);
 
-ConsolidationDismissalSchema.index({ category: 1, value: 1 }, { unique: true });
+ConsolidationDismissalSchema.index({ userId: 1, category: 1, value: 1 }, { unique: true });

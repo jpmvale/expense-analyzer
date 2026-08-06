@@ -2,7 +2,7 @@
 // direto num teste quebra antes de o servidor subir.
 import 'reflect-metadata';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import mongoose, { Connection, Model, Schema } from 'mongoose';
+import mongoose, { Connection, Model, Schema, Types } from 'mongoose';
 import { Category, CategoryDocument, CategorySchema } from '../schemas/category.schema';
 import {
   CategoryRule,
@@ -21,6 +21,7 @@ import {
   SubscriptionDocument,
   SubscriptionSchema,
 } from '../schemas/subscription.schema';
+import { User, UserDocument, UserSchema } from '../schemas/user.schema';
 
 /**
  * Um MongoDB de verdade, em memória, para os testes que precisam do banco.
@@ -46,6 +47,7 @@ export interface TestDb {
   dismissals: Model<ConsolidationDismissalDocument>;
   subscriptions: Model<SubscriptionDocument>;
   runs: Model<SyncRunDocument>;
+  users: Model<UserDocument>;
   /** Esvazia as coleções entre um teste e outro, sem derrubar o servidor. */
   clear(): Promise<void>;
   stop(): Promise<void>;
@@ -84,6 +86,7 @@ export async function startTestDb(): Promise<TestDb> {
     SubscriptionSchema,
   );
   const runs = modelFor<SyncRunDocument>(connection, SyncRun.name, SyncRunSchema);
+  const users = modelFor<UserDocument>(connection, User.name, UserSchema);
 
   // O índice único de (kind, value) é parte do contrato da coleção de regras, e
   // o Mongoose só o cria em segundo plano — sem esperar, o primeiro teste que
@@ -95,6 +98,7 @@ export async function startTestDb(): Promise<TestDb> {
     dismissals.init(),
     subscriptions.init(),
     runs.init(),
+    users.init(),
   ]);
 
   return {
@@ -104,6 +108,7 @@ export async function startTestDb(): Promise<TestDb> {
     dismissals,
     subscriptions,
     runs,
+    users,
     async clear() {
       await Promise.all([
         purchases.deleteMany({}),
@@ -112,6 +117,7 @@ export async function startTestDb(): Promise<TestDb> {
         dismissals.deleteMany({}),
         subscriptions.deleteMany({}),
         runs.deleteMany({}),
+        users.deleteMany({}),
       ]);
     },
     async stop() {
@@ -121,6 +127,17 @@ export async function startTestDb(): Promise<TestDb> {
   };
 }
 
+/**
+ * O dono dos dados na maioria dos testes.
+ *
+ * É constante e vive aqui porque quase todo teste tem um usuário só e não quer
+ * saber disso — o que se está testando é a decisão do serviço, não o
+ * multiusuário. `OUTRO_USUARIO` existe para os poucos que precisam provar que a
+ * decisão para no dono: um vizinho com dados na mesma coleção.
+ */
+export const USUARIO = new Types.ObjectId();
+export const OUTRO_USUARIO = new Types.ObjectId();
+
 /** Uma compra já ingerida: `category` e `sourceCategory` começam iguais. */
 export function purchase(
   title: string,
@@ -128,6 +145,7 @@ export function purchase(
   overrides: Partial<Purchase> = {},
 ): Purchase {
   return {
+    userId: USUARIO,
     title,
     amount: 100,
     date: new Date('2026-03-10T00:00:00.000Z'),

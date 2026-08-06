@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { ConfigService } from '@nestjs/config';
-import { startTestDb, type TestDb } from '../testing/mongo';
+import { startTestDb, USUARIO, type TestDb } from '../testing/mongo';
 import { SyncService } from './sync.service';
 
 const CSV = [
@@ -23,7 +23,7 @@ const CSV = [
  */
 async function waitForIdle(service: SyncService) {
   for (let i = 0; i < 200; i++) {
-    const status = await service.status();
+    const status = await service.status(USUARIO);
     if (!status.running) return status;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
@@ -61,11 +61,11 @@ describe('SyncService', () => {
   beforeEach(async () => db.clear());
 
   it('antes da primeira execução, não há o que mostrar', async () => {
-    assert.deepEqual(await service.status(), { running: false, lastRun: null });
+    assert.deepEqual(await service.status(USUARIO), { running: false, lastRun: null });
   });
 
   it('lê as faturas da fonte e grava as compras', async () => {
-    await service.start();
+    await service.start(USUARIO);
     const { lastRun } = await waitForIdle(service);
 
     assert.equal(lastRun?.status, 'ok');
@@ -82,12 +82,13 @@ describe('SyncService', () => {
    */
   it('devolve as regras do usuário sobre o mês recém-regravado', async () => {
     await db.rules.create({
+      userId: USUARIO,
       kind: 'exact',
       value: 'Mercadolivre*Mercadol',
       category: 'mercado livre',
     });
 
-    await service.start();
+    await service.start(USUARIO);
     await waitForIdle(service);
 
     const purchase = await db.purchases.findOne({ title: 'Mercadolivre*Mercadol' }).exec();
@@ -96,18 +97,23 @@ describe('SyncService', () => {
   });
 
   it('sincronizar duas vezes não duplica o mês', async () => {
-    await service.start();
+    await service.start(USUARIO);
     await waitForIdle(service);
-    await service.start();
+    await service.start(USUARIO);
     await waitForIdle(service);
 
     assert.equal(await db.purchases.countDocuments(), 3);
   });
 
   it('recusa um segundo pedido enquanto o primeiro roda', async () => {
-    await db.runs.create({ trigger: 'manual', status: 'running', startedAt: new Date() });
+    await db.runs.create({
+      userId: USUARIO,
+      trigger: 'manual',
+      status: 'running',
+      startedAt: new Date(),
+    });
 
-    await assert.rejects(service.start(), /já está em andamento/);
+    await assert.rejects(service.start(USUARIO), /já está em andamento/);
   });
 
   /**
@@ -117,22 +123,24 @@ describe('SyncService', () => {
    */
   it('dá por interrompida uma execução travada e destrava o botão', async () => {
     await db.runs.create({
+      userId: USUARIO,
       trigger: 'cli',
       status: 'running',
       startedAt: new Date(Date.now() - 60 * 60 * 1000),
     });
 
-    const status = await service.status();
+    const status = await service.status(USUARIO);
     assert.equal(status.running, false);
     assert.equal(status.lastRun?.status, 'error');
     assert.match(status.lastRun?.message ?? '', /interrompida/);
 
-    await service.start();
+    await service.start(USUARIO);
     await waitForIdle(service);
   });
 
   it('a execução pela linha de comando é a última sincronização, como qualquer outra', async () => {
     await db.runs.create({
+      userId: USUARIO,
       trigger: 'cli',
       status: 'ok',
       startedAt: new Date('2026-03-20T07:00:00.000Z'),
@@ -141,7 +149,7 @@ describe('SyncService', () => {
       purchases: 5744,
     });
 
-    const { lastRun } = await service.status();
+    const { lastRun } = await service.status(USUARIO);
     assert.equal(lastRun?.trigger, 'cli');
     assert.equal(lastRun?.bills, 95);
   });
@@ -152,7 +160,7 @@ describe('SyncService', () => {
     const failing = new SyncService(db.runs, db.purchases, db.rules, missing);
     process.env.BILLS_DIR = billsDir;
 
-    await failing.start();
+    await failing.start(USUARIO);
     const { lastRun } = await waitForIdle(failing);
 
     assert.equal(lastRun?.status, 'error');

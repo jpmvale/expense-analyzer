@@ -1,14 +1,18 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { IngestionConfig } from '../config';
+import { billsFromCsvFiles } from '../csvFiles';
 import { Bill } from '../interfaces/bill';
 import { IngestionLogger } from '../logger';
-import { CategoryMemory, parseBillCsv, referenceMonthFromFileName } from '../parseBillCsv';
-import { warnDiscarded } from './warnDiscarded';
 
 /**
  * Lê as faturas de um diretório da máquina — útil pra quem baixa os CSVs
  * direto do app do Nubank e não quer configurar o Google Drive.
+ *
+ * A conversão em si mora em `billsFromCsvFiles`, que o `POST /import` também
+ * usa: a ordem cronológica de processamento e a memória de categorização
+ * compartilhada entre as faturas são a mesma decisão nas duas pontas, e duas
+ * cópias dela divergiriam.
  */
 export async function fetchBillsFromDisk(
   config: IngestionConfig,
@@ -29,29 +33,14 @@ export async function fetchBillsFromDisk(
     return [];
   }
 
-  // Processa em ordem cronológica pelo mês detectado, não pela ordem do nome do
-  // arquivo: a memória de categorização só propaga para a frente, e ler as
-  // faturas antigas por último a deixaria vazia justo onde ela é necessária.
-  const ordenados = fileNames
-    .flatMap((fileName) => {
-      const referenceMonth = referenceMonthFromFileName(fileName);
-      if (!referenceMonth) {
-        logger.warn(`Ignorando "${fileName}": o nome não contém o padrão <ano>-<mês>.`);
-        return [];
-      }
-      return [{ fileName, referenceMonth }];
-    })
-    .sort((a, b) => +a.referenceMonth - +b.referenceMonth);
+  const files = await Promise.all(
+    fileNames.map(async (name) => ({
+      name,
+      content: await readFile(join(config.billsDir, name), 'utf-8'),
+    })),
+  );
 
-  const memory = new CategoryMemory();
-  const bills: Bill[] = [];
-
-  for (const { fileName, referenceMonth } of ordenados) {
-    const csv = await readFile(join(config.billsDir, fileName), 'utf-8');
-    const { purchases, discarded } = parseBillCsv(csv, referenceMonth, memory);
-    warnDiscarded(fileName, discarded, logger);
-    bills.push({ referenceMonth, data: purchases });
-  }
-
-  return bills;
+  // Sem inferir o mês pelo conteúdo: a pasta pode ter qualquer CSV, e adivinhar
+  // o mês de um arquivo que não é fatura gravaria lixo por cima de um mês bom.
+  return billsFromCsvFiles(files, logger).bills;
 }

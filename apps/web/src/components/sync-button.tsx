@@ -18,7 +18,9 @@ import { getSyncStatus, startSync } from '../api/client';
 const POLL_MS = 2000;
 
 function triggerLabel(run: SyncRun): string {
-  return run.trigger === 'manual' ? 'pelo botão' : 'pela linha de comando';
+  if (run.trigger === 'manual') return 'pelo botão';
+  if (run.trigger === 'upload') return 'pelo envio de CSVs';
+  return 'pela linha de comando';
 }
 
 /** O resumo de uma execução que deu certo, sem despejar os seis números. */

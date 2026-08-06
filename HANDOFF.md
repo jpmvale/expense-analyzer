@@ -1,6 +1,6 @@
 # Retomar aqui — handoff de sessão
 
-> **Snapshot de 2026-07-29.** Documento vivo: atualizar quando o estado avançar.
+> **Snapshot de 2026-08-06.** Documento vivo: atualizar quando o estado avançar.
 > Serve para retomar em outra máquina ou em outra sessão — o conteúdo viaja pelo git,
 > a memória local do Claude em `~/.claude` **não** viaja.
 >
@@ -17,14 +17,15 @@ CI verde, árvore limpa.
 | | |
 | --- | --- |
 | **Base de referência** | 95 faturas · 5.744 lançamentos · `2018-11` a `2026-09` · R$ 217.774,05 |
-| **Testes** | 331 — api 212 (201 serviço + 11 HTTP/DI), ingestion 41, categorization 35, web 43 |
+| **Testes** | 353 — api 224 (207 serviço + 17 HTTP/DI/isolamento), ingestion 51, categorization 35, web 43 |
 | **Workspaces** | `apps/{api,web,extractor}` + `packages/{categorization,ingestion}` |
-| **Telas** | Login · Visão geral · Compras · Faturas · Assinaturas · Sem categoria · Regras |
+| **Telas** | Login/Cadastro · Visão geral · Compras · Faturas · Assinaturas · Sem categoria · Regras · Importar |
 | **Fila de classificação** | 101 títulos em `outros` |
 | **Assinaturas detectadas** | 17, 11 com nome formal, 6 ativas |
 | **Regras** | 180 — 143 `exact`, 37 `contains` |
-| **Autenticação** | sessão em cookie httpOnly, guarda no Mongo, um usuário só |
-| **Sincronização** | botão no cabeçalho (`POST /sync`) + `pnpm extract` + cron — mesmo código, mesmo registro em `syncRuns` |
+| **Autenticação** | sessão em cookie httpOnly, guardada no Mongo · contas na coleção `users` · cadastro por `INVITE_CODE` |
+| **Isolamento** | `userId` em todas as seis coleções de dados, primeiro em todo índice; parâmetro obrigatório em todo método de serviço |
+| **Sincronização** | botão no cabeçalho (`POST /sync`, só o dono) + `pnpm extract` + cron + `POST /import` — mesmo código, mesmo registro em `syncRuns` |
 
 Subir o ambiente:
 
@@ -32,6 +33,50 @@ Subir o ambiente:
 docker compose up -d   # MongoDB
 pnpm dev               # API + front
 ```
+
+---
+
+## ✅ FEITO (2026-08-06) — multiusuário, cadastro por convite e importação de CSV
+
+O app era de um usuário só, e isso estava no **código**, não na configuração: as credenciais moravam
+em `AUTH_USERNAME`/`AUTH_PASSWORD_HASH`, a sessão guardava o nome, e **nenhum documento tinha dono**.
+Uma segunda conta veria — e reclassificaria — as compras da primeira.
+
+**Como o isolamento foi feito, e por que assim.** Uma coleção `users` nova, e `userId` (o `_id` dela)
+em todas as seis coleções de dados. O dono é **parâmetro obrigatório** de todo método de serviço, em
+vez de estado ambiente que o serviço consultasse sozinho: com ele na assinatura, o compilador cobra
+quem esquecer — e "esquecer o dono" aqui não é um bug discreto, é devolver as compras de outra
+pessoa com status 200. Nos pacotes `categorization` e `ingestion` nada mudou: o corte fica nos
+stores, que já nascem presos a um `userId`.
+
+**O que fica de armadilha para quem retomar:**
+
+1. **Sem rodar a migração, a app abre vazia.** `pnpm --filter @expense/api migrate:multiuser` cria a
+   conta dona a partir do `AUTH_USERNAME`/`AUTH_PASSWORD_HASH` que já estão no `.env` (o login não
+   muda) e carimba `userId` no que existe. Um documento sem dono não aparece para ninguém, e o
+   sintoma é uma base vazia com os oito anos intactos no banco. **Rodar na VPS junto do deploy.**
+2. **`INVITE_CODE` é obrigatório** — a API não sobe sem ele. `.env.prod` da VPS precisa dele e de
+   `OWNER_USERNAME`.
+3. **Os índices únicos globais precisam morrer.** `categories.name_1`, `subscriptions.key_1`,
+   `categoryRules.kind_1_value_1` e `consolidationDismissals.category_1_value_1` recusariam do
+   segundo usuário a categoria que o primeiro já tem. O Mongoose cria os compostos sozinho mas
+   **nunca remove** um índice que deixou de ser declarado — quem derruba é a migração.
+4. **`findById` virou `findOne({ _id, userId })`** em `category.service.ts`. Com o id na URL, buscar
+   só pelo `_id` deixaria um usuário editar e apagar a regra de outro, respondendo 200.
+
+**O teste que sustenta tudo isso** está em `http.itest.ts`: duas contas escrevendo na mesma base, e
+cada rota conferida contra o que a vizinha gravou. Vazamento entre contas não tem sintoma — formato
+certo, status certo, números plausíveis de outra pessoa —, então revisão não pega e teste de serviço
+não pega (cada um roda com um usuário só).
+
+**A importação de CSV (`POST /import`)** é a entrada de faturas de quem não é o dono. Não é um
+segundo pipeline: os arquivos viram `Bill[]` pelo mesmo `billsFromCsvFiles` que a fonte `local` usa
+e vão para o mesmo `ingestBills` do Drive — daí vêm de graça a idempotência por mês e a reaplicação
+das regras. É síncrono (o 202 do `/sync` existia por causa do minuto de viagem ao Drive) e grava um
+`syncRun` com `trigger: 'upload'`. O mês sai do nome do arquivo e, quando ele não traz `AAAA-MM`, das
+**datas de dentro** — o mês majoritário, porque toda fatura tem compras do fim do mês anterior. Essa
+inferência é só do upload: no disco e no Drive, um CSV que não é fatura viraria mês inventado por
+cima de um mês bom.
 
 ---
 
@@ -416,6 +461,10 @@ Nada em andamento. O que está aberto, em ordem de valor aparente:
 
 **Produto**
 
+- **Não há administração de contas.** Nem tela, nem rota: listar, renomear, apagar usuário ou trocar
+  de senha se faz no banco. O `INVITE_CODE` é único e não expira — revogá-lo é trocar a variável e
+  reiniciar a API, o que não derruba quem já entrou. Suficiente para um punhado de pessoas
+  conhecidas, e é esse o recorte de hoje.
 - **O aviso de reajuste tem rota, mas nenhum canal chega sozinho.** `GET /purchase/price-alerts`
   responde sob pedido; não há push, e-mail nem nada que avise sem alguém perguntar. Deliberado —
   construir isso agora seria infraestrutura desproporcional para um app de um usuário só.

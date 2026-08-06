@@ -2,7 +2,6 @@ import 'reflect-metadata';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { hashSync } from 'bcryptjs';
 import { MongoStore } from 'connect-mongo';
 import * as session from 'express-session';
 import { MongoMemoryServer } from 'mongodb-memory-server';
@@ -43,7 +42,10 @@ export interface TestApp {
   app: INestApplication;
   /** Para `supertest(server)` ou `supertest.agent(server)`. */
   server: ReturnType<INestApplication['getHttpServer']>;
-  /** Credenciais válidas nesta instância — não são as do `.env` real. */
+  /**
+   * A conta dona desta instância — a única para quem `/sync` responde. Não são
+   * as credenciais do `.env` real; a conta nem existe até alguém cadastrá-la.
+   */
   credentials: { username: string; password: string };
   stop(): Promise<void>;
 }
@@ -51,18 +53,24 @@ export interface TestApp {
 const TEST_USERNAME = 'teste';
 const TEST_PASSWORD = 'senha-de-teste-nao-e-a-real';
 
+/** O convite desta instância de teste, para as rotas de cadastro. */
+export const TEST_INVITE_CODE = 'convite-de-teste';
+
 export async function startTestApp(): Promise<TestApp> {
   const server = await MongoMemoryServer.create();
   const mongoUri = server.getUri();
 
   // `ConfigModule.forRoot` lê o `.env` real da raiz do repo, e o dotenv nunca
   // sobrescreve uma variável que já está em `process.env` — é por isso que
-  // definir estas quatro ANTES de compilar o módulo basta para a API inteira
-  // rodar contra o banco de teste, e não contra o Mongo de verdade.
+  // definir estas ANTES de compilar o módulo basta para a API inteira rodar
+  // contra o banco de teste, e não contra o Mongo de verdade.
   process.env.MONGO_URI = mongoUri;
   process.env.SESSION_SECRET = 'segredo-de-teste';
-  process.env.AUTH_USERNAME = TEST_USERNAME;
-  process.env.AUTH_PASSWORD_HASH = hashSync(TEST_PASSWORD, 4); // custo baixo: só testes
+  process.env.INVITE_CODE = TEST_INVITE_CODE;
+  // O dono da instância é a conta de teste — é o que faz `/sync` responder a
+  // ela e recusar as outras. As contas em si nascem por `POST /auth/register`:
+  // não há mais usuário vindo do ambiente.
+  process.env.OWNER_USERNAME = TEST_USERNAME;
 
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
@@ -112,9 +120,34 @@ export async function startTestApp(): Promise<TestApp> {
   };
 }
 
-/** Faz login e devolve um agente que carrega o cookie de sessão entre chamadas. */
-export async function loginAgent(testApp: TestApp): Promise<ReturnType<typeof request.agent>> {
+/**
+ * Cadastra a conta (ou entra nela, se já existir) e devolve um agente que
+ * carrega o cookie de sessão entre chamadas.
+ *
+ * Aceita o 409 de propósito: os testes rodam contra um banco que sobrevive
+ * entre eles, e quem chama quer "um agente logado como fulano", não "a primeira
+ * vez de fulano".
+ */
+export async function registerAgent(
+  testApp: TestApp,
+  username: string,
+  password = TEST_PASSWORD,
+): Promise<ReturnType<typeof request.agent>> {
   const agent = request.agent(testApp.server);
-  await agent.post('/auth/login').send(testApp.credentials).expect(201);
+  const created = await agent
+    .post('/auth/register')
+    .send({ username, password, inviteCode: TEST_INVITE_CODE });
+
+  if (created.status === 409) {
+    await agent.post('/auth/login').send({ username, password }).expect(201);
+  } else if (created.status !== 201) {
+    throw new Error(`cadastro de "${username}" respondeu ${created.status}`);
+  }
+
   return agent;
+}
+
+/** Um agente logado como a conta dona da instância. */
+export function loginAgent(testApp: TestApp): Promise<ReturnType<typeof request.agent>> {
+  return registerAgent(testApp, testApp.credentials.username, testApp.credentials.password);
 }

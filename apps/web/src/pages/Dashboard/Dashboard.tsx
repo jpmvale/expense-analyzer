@@ -123,6 +123,26 @@ const Dashboard = () => {
     );
   }
 
+  // Base vazia não é base carregando. Antes os dois estados eram o mesmo porque
+  // nunca havia uma conta sem faturas; com o cadastro aberto por convite, é
+  // exatamente onde toda conta nova aterrissa — e um "Carregando…" que nunca sai
+  // deixaria a primeira tela do app parecendo travada em vez de vazia.
+  if (!loading && bills.length === 0) {
+    return (
+      <>
+        <PageHeader title="Visão geral" description="Nenhuma fatura ainda." />
+        <Card className="p-6 text-sm">
+          <p className="font-medium">Comece importando suas faturas.</p>
+          <p className="mt-1 text-muted-foreground">
+            Mande os CSVs em <Link to="/import" className="text-primary underline">Importar</Link> —
+            pode ser o histórico inteiro de uma vez. Os gráficos, as assinaturas e a comparação com os
+            meses anteriores aparecem a partir daí.
+          </p>
+        </Card>
+      </>
+    );
+  }
+
   return (
     <>
       <PageHeader

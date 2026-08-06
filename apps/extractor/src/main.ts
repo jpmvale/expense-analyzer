@@ -50,8 +50,8 @@ async function recordRun(
   fields: Record<string, unknown>,
 ): Promise<void> {
   await connection.runs.updateOne(
-    { trigger: 'cli', startedAt },
-    { $set: { trigger: 'cli', startedAt, ...fields } },
+    { userId: connection.ownerId, trigger: 'cli', startedAt },
+    { $set: { userId: connection.ownerId, trigger: 'cli', startedAt, ...fields } },
     { upsert: true },
   );
 }

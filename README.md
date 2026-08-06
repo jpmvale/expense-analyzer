@@ -15,15 +15,21 @@ Foi desenvolvido e testado com as faturas exportadas do **Nubank**.
   faturas .csv                  MongoDB                  API (Nest)              Front (React)
  ┌──────────────┐            ┌───────────┐            ┌─────────────┐         ┌───────────────┐
  │ Google Drive │──extractor─▶│ purchases │◀───────────│  /purchase  │◀────────│ tabela +      │
- │  ou ./bills  │      ▲     │           │            │/purchase/bill│         │ gráficos      │
- └──────────────┘      │     └───────────┘            └─────────────┘         └───────────────┘
-        │              └───────────────────────────────── POST /sync ◀──────── botão
-        └──────────────────────────────────────────────────────────┘        "Sincronizar"
+ │  ou ./bills  │      ▲     │  (por     │            │/purchase/bill│         │ gráficos      │
+ └──────────────┘      │     │   dono)   │            └─────────────┘         └───────────────┘
+        │              │     └───────────┘                   ▲
+        │              ├───────────────────────── POST /sync ┤◀──────── botão "Sincronizar"
+        └──────────────┘                          POST /import◀──────── tela "Importar"
+                                                                        (CSVs do navegador)
 ```
 
-A ingestão tem dois gatilhos e um caminho só: `pnpm extract` na linha de comando e o botão
-**Sincronizar** no cabeçalho da app rodam o mesmo código — veja
-[Quando as faturas novas entram](#quando-as-faturas-novas-entram).
+A ingestão tem **três** gatilhos e um caminho só: `pnpm extract` na linha de comando, o botão
+**Sincronizar** e o upload de CSVs pela tela rodam o mesmo código — veja
+[Quando as faturas novas entram](#quando-as-faturas-novas-entram) e
+[Importando faturas pela tela](#importando-faturas-pela-tela).
+
+Cada conta vê só os próprios dados; o Drive é do dono da instância, e as demais importam CSV pela
+tela — [Contas](#contas).
 
 ---
 
@@ -31,7 +37,9 @@ A ingestão tem dois gatilhos e um caminho só: `pnpm extract` na linha de coman
 
 | Área | O que faz |
 | --- | --- |
-| **Ingestão** | Lê as faturas em CSV do **Google Drive** ou de uma **pasta local**, categoriza as compras e grava no MongoDB. Regravar uma fatura sobrescreve o mês inteiro — rodar de novo é idempotente. |
+| **Contas** | Cada conta vê **só os próprios dados** — compras, regras, categorias, assinaturas. O cadastro é **por convite**, porque a instância fica exposta na internet — [detalhes](#contas). |
+| **Ingestão** | Lê as faturas em CSV do **Google Drive**, de uma **pasta local** ou do **upload pela tela**, categoriza as compras e grava no MongoDB. Regravar uma fatura sobrescreve o mês inteiro — rodar de novo é idempotente. |
+| **Importar** | Sobe vários CSVs de uma vez e passa pelo mesmo pipeline do Drive, com as mesmas garantias. O mês vem do nome do arquivo e, quando ele não diz, das datas de dentro — [detalhes](#importando-faturas-pela-tela). É o caminho de quem não tem Drive configurado, que é todo mundo menos o dono da instância. |
 | **Sincronização** | Um botão no cabeçalho pede a ingestão sem sair da tela, e diz **quando foi a última** e o que ela mexeu. Vale para as duas pontas: uma extração pela linha de comando ou pelo cron aparece ali igual, porque as duas gravam o mesmo registro — [detalhes](#quando-as-faturas-novas-entram). |
 | **Categorização** | Uma escada de precedência (detalhada [abaixo](#como-uma-compra-ganha-categoria)) que termina em `outros`. No topo dela ficam as **suas regras**; embaixo, a categoria do CSV, a herança por título e as palavras-chave. Códigos internos do emissor viram rótulos do domínio: `reversal_*` → `estorno`, `tax_*` → `impostos`, `bnpl_*` → `parcelado`. |
 | **Classificação** | Você cria suas categorias e diz a que categoria cada estabelecimento pertence. A regra vale para todas as compras dele, passadas e futuras, e **sobrevive ao reprocessamento**. Reclassificar acontece em dois lugares: na tela *Sem categoria*, que lista o que está em `outros` do que mais pesa para o que menos pesa, e direto na coluna Categoria da tabela de Compras. |
@@ -101,8 +109,10 @@ explícito, o front pelo `envDir` do Vite). Copie de [`.env.example`](.env.examp
 | `MONGO_URI` | api, extractor | `mongodb://localhost:27017/credit-card` | Conexão com o Mongo. **O nome do banco vai na URI** — é dele que os dois apps leem. Troque por uma connection string do Atlas se preferir a nuvem. |
 | `PORT` | api | `3000` | Porta HTTP da API. |
 | `CORS_ORIGIN` | api | `http://localhost:5173` | Origens liberadas no CORS, separadas por vírgula. **Vazio libera todas** (só em dev). |
-| `AUTH_USERNAME` | api | — | Usuário único do login. Veja [Autenticação](#autenticação). |
-| `AUTH_PASSWORD_HASH` | api | — | Hash bcrypt da senha — nunca a senha em texto puro. Gerado por `pnpm --filter @expense/api hash-password`. **Segredo.** |
+| `INVITE_CODE` | api | — | O código que libera o cadastro. Sem ele a API não sobe. Veja [Contas](#contas). **Segredo.** |
+| `OWNER_USERNAME` | api, extractor | `AUTH_USERNAME` | A conta dona da instância: a única para quem `/sync` e o cron do Drive existem. |
+| `AUTH_USERNAME` | migração | — | Só para `migrate:multiuser`, que cria a conta dona a partir dele. Veja [Contas](#contas). |
+| `AUTH_PASSWORD_HASH` | migração | — | Idem: o hash bcrypt que a conta dona herda, para o login não mudar. Gerado por `pnpm --filter @expense/api hash-password`. **Segredo.** |
 | `SESSION_SECRET` | api | — | Assina o cookie de sessão. String aleatória longa; trocar derruba toda sessão aberta. **Segredo.** |
 | `VITE_API_URL` | web | `http://localhost:3000` | Base da API usada pelo front. Precisa do prefixo `VITE_` pra chegar no bundle. |
 | `EXTRACTOR_SOURCE` | extractor, api | `drive` | De onde vêm as faturas: `drive` (Google Drive) ou `local` (pasta). |
@@ -122,24 +132,76 @@ repositório.
 
 ---
 
-## Autenticação
+## Contas
 
-Um usuário só, sem tela de cadastro — é um app pessoal. Toda rota escreve ou lê dados de verdade,
-então tudo exige sessão, exceto `/auth/login`, `/auth/session` e `/health`.
+Cada conta vê **só os próprios dados**: compras, regras, categorias, apelidos de assinatura e
+histórico de sincronização. O recorte não é uma convenção de código — todo documento carrega o `_id`
+do dono, todo índice começa por ele, e todo método de serviço recebe o dono como primeiro parâmetro,
+de forma que uma consulta nova não tenha como esquecê-lo. Um [teste de integração](#os-testes-que-sobem-a-api-inteira)
+com duas contas percorre todas as rotas conferindo que nenhuma enxerga a outra.
+
+**O cadastro é por convite.** A tela de login tem um "Criar conta" que pede usuário, senha e um
+código, e esse código é `INVITE_CODE` no `.env` do servidor — sem ele a API se recusa a subir. A
+razão é o endereço: uma instância exposta na internet sem barreira nenhuma vira cadastro aberto para
+qualquer robô que ache a URL.
 
 ```bash
-# Gera o hash — a senha em texto puro nunca é gravada em lugar nenhum, nem no .env
-pnpm --filter @expense/api hash-password '<sua senha>'
+# O convite: qualquer string longa serve. Combine com quem você quer que entre.
+openssl rand -hex 16
 ```
 
-Cole o resultado em `AUTH_PASSWORD_HASH` no `.env`, escolha `AUTH_USERNAME` e gere um
-`SESSION_SECRET` (`openssl rand -hex 32` serve). A sessão é um cookie `httpOnly`, guardado no
-próprio Mongo (`connect-mongo`, coleção `sessions`) — e não em memória, porque a API sobe com `nest
-start --watch`: cada salvamento reiniciaria o processo, e uma sessão em memória cairia junto.
+Além dele, gere um `SESSION_SECRET` (`openssl rand -hex 32`). A sessão é um cookie `httpOnly`,
+guardado no próprio Mongo (`connect-mongo`, coleção `sessions`) — e não em memória, porque a API sobe
+com `nest start --watch`: cada salvamento reiniciaria o processo, e uma sessão em memória cairia
+junto. Toda rota exige sessão, exceto `/auth/register`, `/auth/login`, `/auth/session` e `/health`.
 
-Login e logout ficam em `POST /auth/login` e `POST /auth/logout`; `GET /auth/session` diz se a
-sessão atual está autenticada, e é o que o front pergunta ao abrir. Trocar `SESSION_SECRET` ou
-`AUTH_PASSWORD_HASH` invalida qualquer sessão aberta — força login de novo, em qualquer aba.
+`GET /auth/session` responde quem está logado e se essa conta é a **dona da instância**
+(`OWNER_USERNAME`). Só ela vê o botão **Sincronizar**, e só para ela `/sync` responde: a
+sincronização lê as faturas de um Google Drive cujas credenciais OAuth estão no servidor e são de uma
+conta Google só. As demais sobem as faturas em [CSV pela tela de Importar](#importando-faturas-pela-tela).
+
+### Vindo da versão de um usuário só
+
+Antes as credenciais moravam em `AUTH_USERNAME` e `AUTH_PASSWORD_HASH`, e nenhum documento tinha
+dono. Como agora toda consulta filtra por dono, um documento sem dono **não aparece para ninguém** —
+sem migrar, a app abriria vazia com os anos de fatura intactos no banco.
+
+```bash
+pnpm --filter @expense/api migrate:multiuser
+```
+
+O script cria a conta dona a partir de `AUTH_USERNAME` + `AUTH_PASSWORD_HASH` (reaproveitando o hash,
+então **seu login não muda**), carimba `userId` em todos os documentos das seis coleções e derruba os
+índices únicos globais, que na versão multiusuário recusariam do segundo usuário a categoria que o
+primeiro já tem. É idempotente e não apaga documento nenhum. Suba a API depois — o Mongoose cria os
+índices compostos sozinho.
+
+---
+
+## Importando faturas pela tela
+
+`POST /import` recebe vários CSVs de uma vez, e a tela **Importar** é a interface dele. É o caminho de
+quem não tem o Google Drive configurado — na prática, qualquer conta que não seja a dona da
+instância.
+
+O que ele faz é o que a extração já fazia, pelo mesmo código: os arquivos viram faturas pelo mesmo
+parser da fonte `local` e vão para o mesmo `ingestBills` que o Drive dispara. De onde saem, de graça,
+as duas garantias que importam — **reenviar um mês sobrescreve** em vez de duplicar, e as suas regras
+são reaplicadas depois da gravação, então importar de novo nunca desfaz o que você classificou.
+
+O mês de referência sai do **nome do arquivo** (`nubank-2026-03.csv`), como sempre. Quando o nome não
+traz `AAAA-MM` — e quase nenhum arquivo baixado do app do banco traz —, ele é deduzido pelas **datas
+de dentro do arquivo**: o mês em que caiu a maior parte das compras, e não a mais antiga, porque toda
+fatura tem lançamentos do fim do mês anterior. A resposta diz, arquivo por arquivo, qual mês valeu e
+como foi decidido, justamente para você poder discordar e reenviar com o nome certo.
+
+Mande o histórico inteiro numa leva só quando puder: a memória de categorização é compartilhada entre
+as faturas **de uma mesma chamada**, então um mês sem categoria herda do mês que tem — e isso não
+atravessa importações separadas.
+
+Cada importação vira um registro em `syncRuns` com `trigger: 'upload'`, ao lado dos do botão e do
+cron. É o que faz a pergunta "quando isto foi atualizado?" ter resposta também para quem nunca vai
+usar o Drive.
 
 ---
 
@@ -148,6 +210,11 @@ sessão atual está autenticada, e é o que o front pergunta ao abrir. Trocar `S
 As faturas precisam estar em CSV com o cabeçalho `date,category,title,amount` (a coluna `category`
 é opcional) e o nome do arquivo precisa conter o **mês de referência**: `nubank-2024-03.csv`.
 Detalhes e exemplo em [`bills/README.md`](bills/README.md).
+
+> As duas opções abaixo são do **dono da instância**, que roda o extractor na máquina onde as
+> credenciais do Drive e a pasta de faturas existem. As demais contas sobem os arquivos pela tela —
+> [Importando faturas pela tela](#importando-faturas-pela-tela) —, e por ali o nome do arquivo é uma
+> preferência, não uma exigência.
 
 ### Opção A — pasta local (mais simples)
 
@@ -501,12 +568,17 @@ acontece em dois processos**, e duas implementações dela divergiriam.
   divergiriam, e o sintoma apareceria meses depois como uma categoria que muda sozinha ao
   sincronizar.
 - **`ingestion`** guarda a leitura das faturas e a ordem das operações de uma ingestão — apaga o mês,
-  grava, backfill, reaplica. Ela roda no `pnpm extract` e no `POST /sync`. Aqui a divergência seria
-  pior que uma categoria errada: uma das duas pontas esquecendo a reaplicação no fim significaria que
-  sincronizar por aquele caminho **desfaz** a classificação manual.
+  grava, backfill, reaplica. Ela roda no `pnpm extract`, no `POST /sync` e no `POST /import`. Aqui a
+  divergência seria pior que uma categoria errada: uma das três pontas esquecendo a reaplicação no
+  fim significaria que ingerir por aquele caminho **desfaz** a classificação manual.
 
 Nos dois casos o acesso ao banco fica de fora do pacote, por trás de uma interface — `PurchaseStore` e
 `BillStore`. O extractor as implementa no driver cru do MongoDB; a API, em Mongoose.
+
+**É também onde o multiusuário para.** Nenhum dos dois pacotes sabe que usuário existe: o dono entra
+pelos stores, que já nascem presos a um `userId` (`createPurchaseStore(model, userId)`), e para
+`reapplyRules` e `ingestBills` isso continua sendo simplesmente "a base". Sem esse corte, aplicar uma
+regra recategorizaria as compras de todo mundo.
 
 | Camada | Tecnologia |
 | --- | --- |
@@ -523,6 +595,7 @@ Nos dois casos o acesso ao banco fica de fora do pacote, por trás de uma interf
 
 | Campo | Tipo | Descrição |
 | --- | --- | --- |
+| `userId` | ObjectId | De quem é a compra — o `_id` em `users`. Está em primeiro em todos os índices desta coleção |
 | `title` | string | Descrição da compra, como veio na fatura |
 | `amount` | number | Valor em reais |
 | `date` | Date | Data da compra |
@@ -547,6 +620,15 @@ reprocessamento:
 existem só como string nas compras e continuam valendo. Esta coleção guarda as que precisam existir
 **antes** de qualquer compra usá-las — sem ela não daria para criar "mercado livre" e classificar em
 seguida. `GET /category` devolve a união das duas.
+
+**`users`** — uma linha por conta: `username` (único, em minúsculas) e `passwordHash` (bcrypt, custo
+12). A senha em texto puro não é gravada em lugar nenhum.
+
+**Todas as coleções de dados carregam `userId`** — `purchases`, `categoryRules`, `categories`,
+`subscriptions`, `consolidationDismissals` e `syncRuns`. Os índices únicos são **compostos com ele**:
+duas contas podem ter a categoria "mercado", a regra `ifood → delivery` e um apelido para a mesma
+assinatura sem colidir. O `_id` do usuário é o que carimba, e não o nome, para que renomear uma conta
+um dia não obrigue a reescrever a base inteira.
 
 ---
 
@@ -799,13 +881,15 @@ de ser uma exceção rápida e vira algo que merece revisão título a título.
 ### `GET /sync` e `POST /sync`
 
 O estado da ingestão e o pedido de uma nova — [o fluxo inteiro](#quando-as-faturas-novas-entram).
-`POST` responde **202** ao aceitar o pedido, ou **409** se já houver uma em andamento.
+`POST` responde **202** ao aceitar o pedido, ou **409** se já houver uma em andamento. As duas rotas
+respondem **403** para quem não é a conta dona da instância: elas falam do Google Drive, que é dela
+— veja [Contas](#contas).
 
 ```json
 {
   "running": false,
   "lastRun": {
-    "trigger": "cli",              // "manual" é o botão; "cli", o pnpm extract e o cron
+    "trigger": "cli",              // "manual" é o botão; "cli", o cron; "upload", o POST /import
     "status": "ok",                // running | ok | error
     "startedAt": "2026-08-04T07:00:00.000Z",
     "finishedAt": "2026-08-04T07:01:12.000Z",
@@ -824,6 +908,31 @@ O `log` é o mesmo relato que o `pnpm extract` imprime no terminal, guardado por
 dos casos que não são erro e não mudam contagem nenhuma: um arquivo ignorado por ter nome fora do
 padrão `<ano>-<mês>`, dois arquivos disputando o mesmo mês, linhas descartadas por valor ilegível. A
 tela mostra dele só as linhas de aviso.
+
+### `POST /import`
+
+`multipart/form-data` com um ou mais CSVs no campo `files` — a entrada de faturas de quem não usa o
+Drive, descrita em [Importando faturas pela tela](#importando-faturas-pela-tela). Máximo de 120
+arquivos de 2 MB cada, só `.csv`. Responde **409** se já houver uma ingestão em andamento para
+aquela conta.
+
+Síncrono, ao contrário do `POST /sync`: o 202 de lá existe porque ler 95 faturas do Drive leva mais de
+um minuto e um proxy cortaria a conexão no meio. Aqui os arquivos já chegaram, e o que falta é
+parsear e gravar.
+
+```jsonc
+{
+  "files": [
+    { "name": "nubank-2026-03.csv", "month": "2026-03", "monthFrom": "filename", "purchases": 61, "discarded": 0 },
+    // Sem <ano>-<mês> no nome: o mês saiu das datas de dentro do arquivo
+    { "name": "fatura (3).csv", "month": "2026-04", "monthFrom": "content", "purchases": 58, "discarded": 2 },
+    { "name": "extrato.csv", "month": null, "monthFrom": null, "purchases": 0, "discarded": 0,
+      "skipped": "o nome não contém <ano>-<mês> e as datas de dentro do arquivo não foram lidas." }
+  ],
+  "result": { "bills": 2, "purchases": 119, "rules": 12, "classified": 40, "restored": 0, "financing": 0 },
+  "log": ["Gravando 2 faturas no MongoDB:", "  2026-03: 61 compras"]
+}
+```
 
 ### `GET /health`
 
@@ -848,6 +957,7 @@ Todos rodam da raiz do repositório.
 | `pnpm db:seed` | Popula o banco com 18 meses de faturas fictícias (determinístico) |
 | `pnpm extract` | Roda o extractor com as suas faturas de verdade |
 | `pnpm reapply` | Reaplica regras e encargos sobre a base já gravada, sem reextrair — veja abaixo |
+| `pnpm --filter @expense/api migrate:multiuser` | Uma vez só, vindo da versão de usuário único: cria a conta dona e dá dono aos dados que não têm — [detalhes](#vindo-da-versão-de-um-usuário-só) |
 
 Para inspecionar o banco pelo navegador: `docker compose --profile tools up -d` → http://localhost:8081.
 
@@ -918,11 +1028,17 @@ módulo esquecido, um decorator de rota errado, um guard que libera o que devia 
 desses erros aparece testando o serviço isolado.
 
 `apps/api/src/http.itest.ts` compila o `AppModule` de verdade via `Test.createTestingModule`,
-contra o mesmo `mongodb-memory-server`, com credenciais de teste geradas na hora — nunca as do
+contra o mesmo `mongodb-memory-server`, com um convite e contas de teste criadas na hora — nunca as do
 `.env` real — e bate nas rotas por HTTP com `supertest`. Cobre: o guard bloqueando sem sessão e
-liberando as rotas `@Public()`; login e logout abrindo e fechando a sessão de verdade; o
-`ValidationPipe` rejeitando corpo incompleto e campo desconhecido; e a resolução de cada
-controller principal pelo container do Nest.
+liberando as rotas `@Public()`; cadastro, login e logout abrindo e fechando a sessão de verdade; o
+`ValidationPipe` rejeitando corpo incompleto e campo desconhecido; o `/sync` respondendo só ao dono da
+instância; e a resolução de cada controller principal pelo container do Nest.
+
+**E o isolamento entre contas, que é o teste que justifica o multiusuário existir.** Vazamento entre
+contas não tem sintoma: a resposta tem o formato certo, o status é 200 e a tela mostra números
+plausíveis — de outra pessoa. Nenhum teste de serviço pega isso, porque cada um roda com um usuário
+só. Ali duas contas importam faturas na mesma base e cada rota é conferida contra o que a vizinha
+gravou, incluindo `PATCH` e `DELETE` de regra com o id da outra, que precisam dar 404 e não 200.
 
 Por que é um comando separado (`pnpm test:http`, dentro do `pnpm test` da API) em vez de entrar no
 glob de `*.test.ts`: o efeito colateral do `emitDecoratorMetadata` citado acima, que é inofensivo
@@ -965,6 +1081,13 @@ Os dois primeiros números repartem o gasto; o terceiro o altera. Com a base em 
 
 ## Estado atual
 
+- **O multiusuário é de dados, não de administração.** Cada conta é uma ilha: não há papéis, nem
+  compartilhamento entre contas, nem tela para listar, renomear ou apagar usuários — isso se faz no
+  banco. Trocar de senha também não tem tela. O único privilégio que existe é `OWNER_USERNAME`, e ele
+  vale para uma coisa só: disparar a sincronização com o Drive.
+- **O Drive continua sendo de uma conta Google só.** As credenciais OAuth moram no servidor e são do
+  dono da instância; as demais contas importam CSV pela tela. Um Drive por usuário exigiria tela de
+  consentimento, token por conta e refresh, e não é o que esta versão se propõe a fazer.
 - **Nada observa a fonte.** O botão **Sincronizar** tirou o `pnpm extract` por SSH do caminho, mas
   não transformou a app num observador: uma fatura nova no Drive continua invisível até alguém pedir
   a ingestão, no botão ou no cron. Não há webhook do Drive nem varredura periódica de dentro da API —

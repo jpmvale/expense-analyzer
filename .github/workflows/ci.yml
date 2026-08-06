@@ -69,6 +69,12 @@ jobs:
       SESSION_SECRET: ci-smoke-descartavel-nao-usar-em-producao
       AUTH_USERNAME: ci
       AUTH_PASSWORD_HASH: $2b$12$91/IvMSuKsdMP20bj6xr0OqWs8Rjf2hWhlnCFitkf2tctqRKSyMHq
+      # Sem convite a API não sobe: é ele que libera o cadastro, e um default
+      # seria uma instância aberta esperando alguém esquecer de fechá-la.
+      INVITE_CODE: ci-smoke-descartavel-nao-usar-em-producao
+      # A conta dona: é ela que o extractor carimba nas compras, e a única para
+      # quem `/sync` responde — o que este job consulta mais abaixo.
+      OWNER_USERNAME: ci
 
     steps:
       - uses: actions/checkout@v5
@@ -79,6 +85,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+
+      # Cria a conta dona antes de qualquer escrita. O banco do runner nasce
+      # vazio, e desde que os dados têm dono não há como gravar uma compra sem
+      # um: o seed falharia dizendo para rodar isto. Rodar a migração aqui, em
+      # vez de inserir o usuário na mão, é de brinde o único lugar que exercita
+      # o mesmo comando que o deploy em produção manda executar.
+      - run: pnpm --filter @expense/api migrate:multiuser
 
       # Popula o banco com as faturas fictícias e confere que a API responde
       # com dados de verdade — pega quebras de contrato entre extractor e API.

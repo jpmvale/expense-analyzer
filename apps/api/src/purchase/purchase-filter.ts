@@ -1,5 +1,5 @@
 import { NON_SPENDING_CATEGORIES, PAYMENT_CATEGORY } from '@expense/categorization';
-import type { FilterQuery } from 'mongoose';
+import type { FilterQuery, Types } from 'mongoose';
 import type { PurchaseDocument } from '../schemas/purchase.schema';
 
 /** O formato que o controller entrega; casado estruturalmente com o DTO. */
@@ -46,8 +46,16 @@ function parseYearMonth(value: string): [number, number] {
 /**
  * Monta o filtro do Mongo a partir dos query params. É uma função pura, fora do
  * service, porque é aqui que moram as regras que valem a pena testar sem banco.
+ *
+ * O dono é parâmetro obrigatório, e não algo que o service acrescenta depois:
+ * este é o único lugar que constrói o filtro da listagem, e um filtro sem
+ * `userId` não devolve "poucas compras a mais" — devolve as compras de outra
+ * pessoa.
  */
-export function buildPurchaseFilter(input: PurchaseFilterInput): FilterQuery<PurchaseDocument> {
+export function buildPurchaseFilter(
+  userId: Types.ObjectId,
+  input: PurchaseFilterInput,
+): FilterQuery<PurchaseDocument> {
   // Sem corte por valor: estornos vêm negativos e precisam aparecer aqui, senão
   // este endpoint e o /purchase/bill discordam do total do mês — um lista só o
   // que foi gasto, o outro soma o que foi gasto menos o que voltou.
@@ -55,6 +63,7 @@ export function buildPurchaseFilter(input: PurchaseFilterInput): FilterQuery<Pur
   // Encargos saem junto com o pagamento pelo mesmo motivo: os dois ficam fora do
   // total das faturas, e deixá-los entrar aqui faria as duas telas discordarem.
   const query: FilterQuery<PurchaseDocument> = {
+    userId,
     category: { $nin: NON_SPENDING_CATEGORIES },
   };
 

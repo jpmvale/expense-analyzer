@@ -6,9 +6,11 @@ import type {
   RuleKind,
   UncategorizedTitle,
 } from '../interface/category';
+import type { ImportResult } from '../interface/import';
 import type ListPurchase from '../interface/listPurchase';
 import type { ConsolidationSuggestion, RuleUsage } from '../interface/rule';
 import type { RecurringCharge } from '../interface/recurring';
+import type { Session } from '../interface/session';
 import type { SyncStatus } from '../interface/sync';
 
 /**
@@ -236,14 +238,44 @@ export function startSync(): Promise<SyncStatus> {
   return request<SyncStatus>('/sync', { method: 'POST' });
 }
 
-export function login(username: string, password: string): Promise<{ username: string }> {
+export function login(username: string, password: string): Promise<Session> {
   return sendJson('POST', '/auth/login', { username, password });
+}
+
+/**
+ * Cria a conta e já entra nela — a API abre a sessão na mesma resposta, então
+ * não há um segundo passo de login depois do cadastro.
+ *
+ * O código de convite é do servidor (`INVITE_CODE`), e não um segredo do
+ * usuário: ele existe porque a instância fica exposta na internet e sem barreira
+ * qualquer robô criaria conta.
+ */
+export function register(
+  username: string,
+  password: string,
+  inviteCode: string,
+): Promise<Session> {
+  return sendJson('POST', '/auth/register', { username, password, inviteCode });
 }
 
 export function logout(): Promise<void> {
   return request<void>('/auth/logout', { method: 'POST' });
 }
 
-export function getSession(): Promise<{ authenticated: boolean }> {
-  return getJson<{ authenticated: boolean }>('/auth/session');
+export function getSession(): Promise<Session> {
+  return getJson<Session>('/auth/session');
+}
+
+/**
+ * Sobe faturas em CSV, que passam pelo mesmo pipeline do Drive: reenviar um mês
+ * sobrescreve o que estava lá, e as regras do usuário são reaplicadas depois.
+ *
+ * `FormData` sem `content-type` na mão de propósito: o navegador precisa montar
+ * o cabeçalho com o `boundary` do multipart, e defini-lo aqui geraria um corpo
+ * que o servidor não consegue separar em arquivos.
+ */
+export function importCsvs(files: File[]): Promise<ImportResult> {
+  const body = new FormData();
+  for (const file of files) body.append('files', file);
+  return request<ImportResult>('/import', { method: 'POST', body });
 }

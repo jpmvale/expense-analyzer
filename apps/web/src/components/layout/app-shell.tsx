@@ -7,6 +7,7 @@ import {
   ReceiptTextIcon,
   RepeatIcon,
   TagsIcon,
+  UploadIcon,
   WalletIcon,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
@@ -25,6 +26,7 @@ const NAV = [
   { to: '/recurring', label: 'Assinaturas', Icon: RepeatIcon },
   { to: '/uncategorized', label: 'Sem categoria', Icon: TagsIcon },
   { to: '/rules', label: 'Regras', Icon: ListChecksIcon },
+  { to: '/import', label: 'Importar', Icon: UploadIcon },
 ];
 
 function Wordmark() {
@@ -40,7 +42,7 @@ function Wordmark() {
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { signOut } = useAuth();
+  const { signOut, isOwner } = useAuth();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -110,7 +112,11 @@ export function AppShell() {
           </nav>
 
           <div className="ml-auto flex items-center gap-1">
-            <SyncButton />
+            {/* Só para a conta dona da instância: sincronizar lê as faturas de
+                um Google Drive cujas credenciais são de uma pessoa só. Para as
+                demais contas a rota responde 403, e um botão que sempre falha é
+                pior que botão nenhum — elas usam a tela de Importar. */}
+            {isOwner && <SyncButton />}
             <ThemeToggle />
             <Button variant="ghost" size="icon" aria-label="Sair" title="Sair" onClick={handleSignOut}>
               <LogOutIcon />

@@ -10,22 +10,39 @@ interface FromState {
   from?: Location;
 }
 
+type Mode = 'entrar' | 'criar';
+
+/**
+ * Entrar e criar conta na mesma tela, alternando por um link.
+ *
+ * Os dois formulários são o mesmo com um campo a mais — usuário, senha e, no
+ * cadastro, o código de convite. Duas rotas separadas custariam uma navegação
+ * inteira para trocar de ideia sobre qual dos dois se queria.
+ */
 function Login() {
-  const { signIn } = useAuth();
+  const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [mode, setMode] = useState<Mode>('entrar');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const criando = mode === 'criar';
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      await signIn(username, password);
+      if (criando) {
+        await signUp(username, password, inviteCode);
+      } else {
+        await signIn(username, password);
+      }
       // Volta para a página que pediu login — quem tentou abrir /rules direto
       // aterrissa em /rules, não sempre em /dashboard.
       const from = (location.state as FromState | null)?.from;
@@ -37,6 +54,11 @@ function Login() {
     }
   };
 
+  const trocarModo = () => {
+    setMode(criando ? 'entrar' : 'criar');
+    setError(null);
+  };
+
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm p-6">
@@ -45,7 +67,11 @@ function Login() {
           <CardTitle className="text-base">
             expense<span className="text-muted-foreground">/analyzer</span>
           </CardTitle>
-          <CardDescription>Entre para ver suas compras e faturas.</CardDescription>
+          <CardDescription>
+            {criando
+              ? 'Crie sua conta para importar suas faturas.'
+              : 'Entre para ver suas compras e faturas.'}
+          </CardDescription>
         </CardHeader>
 
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -77,17 +103,45 @@ function Login() {
             <Input
               id="password"
               type="password"
-              autoComplete="current-password"
+              // Diz ao gerenciador de senhas se é para propor uma nova ou
+              // preencher a que já existe — o mesmo campo faz as duas coisas.
+              autoComplete={criando ? 'new-password' : 'current-password'}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
+              minLength={criando ? 8 : undefined}
             />
+            {criando && <p className="text-xs text-muted-foreground">Pelo menos 8 caracteres.</p>}
           </div>
 
+          {criando && (
+            <div className="space-y-1.5">
+              <label htmlFor="inviteCode" className="text-sm font-medium">
+                Código de convite
+              </label>
+              <Input
+                id="inviteCode"
+                value={inviteCode}
+                onChange={(event) => setInviteCode(event.target.value)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Combinado com quem administra esta instância.
+              </p>
+            </div>
+          )}
+
           <Button type="submit" disabled={busy} className="w-full">
-            {busy ? 'Entrando…' : 'Entrar'}
+            {busy ? (criando ? 'Criando…' : 'Entrando…') : criando ? 'Criar conta' : 'Entrar'}
           </Button>
         </form>
+
+        <p className="pt-4 text-center text-sm text-muted-foreground">
+          {criando ? 'Já tem conta?' : 'Ainda não tem conta?'}{' '}
+          <button type="button" onClick={trocarModo} className="font-medium text-primary underline">
+            {criando ? 'Entrar' : 'Criar conta'}
+          </button>
+        </p>
       </Card>
     </div>
   );
