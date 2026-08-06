@@ -9,6 +9,11 @@
     "PORT",
     "CORS_ORIGIN",
     "VITE_API_URL",
+    // A conta em nome de quem o extractor grava. Sem ela na lista, `pnpm
+    // db:seed` e `pnpm extract` falham dizendo que a variável não está definida
+    // mesmo com ela exportada no shell — o modo estrito a filtra no caminho.
+    "OWNER_USERNAME",
+    "AUTH_USERNAME",
     "EXTRACTOR_SOURCE",
     "BILLS_DIR",
     "DRIVE_FILE_QUERY",
