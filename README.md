@@ -37,6 +37,7 @@ tela — [Contas](#contas).
 
 | Área | O que faz |
 | --- | --- |
+| **Aterrissagem** | A raiz decide pelo visitante: quem chega de fora vê uma página que diz o que o app faz e o que ele vai pedir (os CSVs das faturas); quem já tem sessão cai direto na Visão geral. Antes o link cru levava a uma caixa de usuário e senha sem contexto nenhum. |
 | **Contas** | Cada conta vê **só os próprios dados** — compras, regras, categorias, assinaturas. O cadastro é **por convite**, porque a instância fica exposta na internet — [detalhes](#contas). |
 | **Ingestão** | Lê as faturas em CSV do **Google Drive**, de uma **pasta local** ou do **upload pela tela**, categoriza as compras e grava no MongoDB. Regravar uma fatura sobrescreve o mês inteiro — rodar de novo é idempotente. |
 | **Importar** | Sobe vários CSVs de uma vez e passa pelo mesmo pipeline do Drive, com as mesmas garantias. O mês vem do nome do arquivo e, quando ele não diz, das datas de dentro — [detalhes](#importando-faturas-pela-tela). É o caminho de quem não tem Drive configurado, que é todo mundo menos o dono da instância. |

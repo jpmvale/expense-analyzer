@@ -1,6 +1,6 @@
 import { AlertCircleIcon, WalletIcon } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
-import { Link, useLocation, useNavigate, type Location } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams, type Location } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -24,7 +24,11 @@ function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [mode, setMode] = useState<Mode>('entrar');
+  // `?criar=1` abre já no cadastro. É como o botão "Criar conta" da
+  // aterrissagem chega aqui — sem isso, ele cairia no formulário de entrar e a
+  // pessoa teria de achar o link para trocar de modo.
+  const [params] = useSearchParams();
+  const [mode, setMode] = useState<Mode>(params.has('criar') ? 'criar' : 'entrar');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

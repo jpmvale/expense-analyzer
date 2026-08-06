@@ -1,8 +1,9 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 import { AppShell } from '@/components/layout/app-shell';
 import ForgotPasswordPage from '@/pages/ForgotPassword/ForgotPassword';
 import LoginPage from '@/pages/Login/Login';
 import ResetPasswordPage from '@/pages/ResetPassword/ResetPassword';
+import { LandingOrApp } from './landing-or-app';
 import {
   AccountPage,
   BillsPage,
@@ -17,9 +18,13 @@ import { RequireAuth } from './require-auth';
 
 // O shell é uma rota de layout: header e container ficam num lugar só, e cada
 // página cuida apenas do próprio conteúdo. As páginas são carregadas sob demanda
-// — veja `pages/lazy`. `/login` fica fora do `<RequireAuth>` — é a única rota
-// que precisa funcionar sem sessão.
+// — veja `pages/lazy`. As rotas de fora do `<RequireAuth>` são as que precisam
+// funcionar sem sessão: a raiz, o login e as duas de senha.
 const router = createBrowserRouter([
+  // A raiz decide pelo visitante: apresentação para quem chega de fora, painel
+  // para quem já entrou. Não é `lazy` — é a primeira tela de quem clica no link,
+  // e um spinner de carregamento de bundle bem aí seria o pior primeiro contato.
+  { path: '/', element: <LandingOrApp /> },
   { path: '/login', element: <LoginPage /> },
   // As duas de senha ficam fora do `<RequireAuth>` pelo mesmo motivo do login:
   // quem esqueceu a senha não tem sessão para provar nada. Não são `lazy` —
@@ -33,7 +38,6 @@ const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { path: '/', element: <Navigate to="/dashboard" replace /> },
           { path: '/dashboard', element: <DashboardPage /> },
           { path: '/purchases', element: <PurchasesPage /> },
           { path: '/bills', element: <BillsPage /> },

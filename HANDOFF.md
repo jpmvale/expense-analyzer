@@ -19,7 +19,7 @@ CI verde, árvore limpa.
 | **Base de referência** | 95 faturas · 5.744 lançamentos · `2018-11` a `2026-09` · R$ 217.774,05 |
 | **Testes** | 353 — api 224 (207 serviço + 17 HTTP/DI/isolamento), ingestion 51, categorization 35, web 43 |
 | **Workspaces** | `apps/{api,web,extractor}` + `packages/{categorization,ingestion}` |
-| **Telas** | Login/Cadastro · Visão geral · Compras · Faturas · Assinaturas · Sem categoria · Regras · Importar |
+| **Telas** | Aterrissagem · Login/Cadastro · Conta · Visão geral · Compras · Faturas · Assinaturas · Sem categoria · Regras · Importar |
 | **Fila de classificação** | 101 títulos em `outros` |
 | **Assinaturas detectadas** | 17, 11 com nome formal, 6 ativas |
 | **Regras** | 180 — 143 `exact`, 37 `contains` |
@@ -33,6 +33,27 @@ Subir o ambiente:
 docker compose up -d   # MongoDB
 pnpm dev               # API + front
 ```
+
+---
+
+## ✅ FEITO (2026-08-06) — aterrissagem pública na raiz
+
+Quem recebia o link caía numa caixa de usuário e senha, sem uma palavra sobre o que o app é — e sem
+saber que ele ia pedir os **CSVs das faturas**, que é a parte nada óbvia.
+
+`/` saiu de dentro do `<RequireAuth>` e passou a decidir pelo visitante: apresentação para quem não
+tem sessão, `/dashboard` para quem tem. Ninguém que já usa percebe diferença.
+
+Duas coisas que o código explica e não são óbvias: a rota **não é `lazy()`** (é a primeira tela de
+quem clica no link, e um spinner de bundle bem aí é o pior primeiro contato), e ela respeita o
+`checking` do `useAuth` — sem isso a landing pisca na cara de quem só queria abrir o próprio painel.
+
+O mock do painel é **SVG desenhado com os tokens do tema**, não uma captura: acompanha claro e
+escuro sozinho e não puxa arquivo de fora. O texto embaixo diz que os números são de exemplo.
+
+Falta fazer o mesmo em **coda** e **kindred**, um PR cada. No coda já ficou decidido: `/` vira
+pública e decide pelo visitante (landing para anônimo, Explorar para quem tem sessão), sem mover
+rota — hoje tudo lá exige login por `RN-021`, e `/` é a tela Explorar.
 
 ---
 
