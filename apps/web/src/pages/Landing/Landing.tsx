@@ -61,7 +61,7 @@ function Landing() {
         <section className="grid items-center gap-10 lg:grid-cols-12">
           <div className="lg:col-span-5">
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              O histórico do seu cartão, lido de ponta a ponta.
+              Tenha visibilidade total dos seus gastos com cartão, de ponta a ponta.
             </h1>
             <p className="mt-4 text-base leading-relaxed text-muted-foreground">
               Você manda as faturas em CSV; o app organiza tudo por mês e por categoria e passa a
