@@ -54,19 +54,22 @@ function Landing() {
         </div>
       </header>
 
+      {/* O hero dá mais espaço à ilustração que ao texto (5 de 12 contra 7): o
+          que este app tem de diferente é a série longa, e ela precisa ser vista,
+          não descrita. */}
       <main className="mx-auto max-w-5xl px-4 py-12 sm:px-6 sm:py-16">
-        <section className="grid items-center gap-10 lg:grid-cols-2">
-          <div>
+        <section className="grid items-center gap-10 lg:grid-cols-12">
+          <div className="lg:col-span-5">
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               O histórico do seu cartão, lido de ponta a ponta.
             </h1>
-            <p className="mt-4 text-base text-muted-foreground">
+            <p className="mt-4 text-base leading-relaxed text-muted-foreground">
               Você manda as faturas em CSV; o app organiza tudo por mês e por categoria e passa a
               responder o que o extrato não responde — qual assinatura subiu de preço, quanto do
               valor da fatura não foi compra sua, e onde este mês fugiu do seu próprio padrão.
             </p>
 
-            <div className="mt-6 flex flex-wrap items-center gap-3">
+            <div className="mt-7 flex flex-wrap items-center gap-3">
               <Button asChild size="lg">
                 <Link to="/login">Entrar</Link>
               </Button>
@@ -81,25 +84,29 @@ function Landing() {
             </p>
           </div>
 
-          <div>
-            <PanelMock />
-            <p className="mt-3 text-center text-xs text-muted-foreground">
+          <figure className="m-0 lg:col-span-7">
+            <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+              <PanelMock />
+            </div>
+            <figcaption className="mt-3 text-center text-xs text-muted-foreground">
               Ilustração do painel, com números de exemplo.
-            </p>
-          </div>
+            </figcaption>
+          </figure>
         </section>
 
-        <section className="mt-16 grid gap-4 sm:grid-cols-3">
+        {/* O espaçamento entre as seções varia de propósito: tudo a `mt-16`
+            achata a página numa lista de blocos do mesmo peso. */}
+        <section className="mt-20 grid gap-4 sm:grid-cols-3">
           {DIFERENCIAIS.map(({ Icon, titulo, texto }) => (
             <Card key={titulo} className="p-5">
               <Icon className="size-5 text-primary" />
-              <h2 className="mt-3 text-sm font-medium">{titulo}</h2>
-              <p className="mt-1.5 text-sm text-muted-foreground">{texto}</p>
+              <h2 className="mt-4 text-base font-semibold tracking-tight">{titulo}</h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{texto}</p>
             </Card>
           ))}
         </section>
 
-        <section className="mt-16">
+        <section className="mt-12">
           <Card className="flex flex-col gap-4 p-6 sm:flex-row sm:items-start">
             <FileSpreadsheetIcon className="size-5 shrink-0 text-muted-foreground" />
             <div>

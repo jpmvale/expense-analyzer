@@ -1,100 +1,124 @@
 /**
- * Uma ilustração do painel — não é uma captura de tela, e o texto ao lado dela
- * diz isso.
+ * O painel, ilustrado — e o argumento da página, não a decoração dela.
  *
- * Desenhada em SVG com os tokens do tema (`assets/globals.css`) em vez de uma
- * imagem: acompanha claro e escuro sozinha, não pesa no bundle, e não abre a
- * porta para carregar arquivo de fora — o front hoje não busca nada de terceiros,
- * e uma landing não é motivo para começar.
+ * Cresceu de propósito: antes era um cartãozinho ao lado do texto, e o que este
+ * app tem de diferente é justamente a **série longa**. Um desenho pequeno de doze
+ * barras não diz "oito anos de fatura"; um total em corpo grande com a série
+ * inteira embaixo, e o reajuste apontado sobre ela, diz.
  *
- * Os números são inventados, e de propósito parecidos com uma fatura de verdade:
- * uma série que sobe e desce, um degrau de preço de assinatura. Inventar valores
- * redondos e triunfais mostraria um app que não existe.
+ * Os números são inventados, e a legenda ao lado avisa. Ficam **dentro** da
+ * ilustração de propósito: no texto do hero, um valor grande passaria por dado
+ * real da pessoa que lê — e nenhum número de verdade tem por que aparecer numa
+ * página pública.
+ *
+ * Desenhado em SVG com os tokens do tema (`assets/globals.css`), sem imagem
+ * externa: acompanha claro e escuro sozinho e não puxa arquivo de fora.
  */
 
-/** Gasto mensal, em altura relativa (0–1). Doze meses, com a variação de sempre. */
-const MESES = [0.52, 0.61, 0.48, 0.72, 0.66, 0.58, 0.83, 0.7, 0.62, 0.9, 0.75, 0.68];
-
-/**
- * A escada de preço de uma assinatura: dois patamares e o degrau entre eles.
- *
- * As larguras somam 152 e o grupo começa em 152, então a linha termina em 304 —
- * a mesma margem de 16 que as barras respeitam do outro lado. Encostar na borda
- * do cartão faria o desenho parecer cortado, e não desenhado.
- */
-const DEGRAUS = [
-  { x: 0, largura: 88, y: 30 },
-  { x: 88, largura: 64, y: 18 },
+/** Gasto mensal em altura relativa (0–1). Vinte e quatro meses — a cara de uma série longa. */
+const MESES = [
+  0.42, 0.55, 0.38, 0.61, 0.5, 0.47, 0.66, 0.58, 0.44, 0.7, 0.52, 0.6, 0.48, 0.63, 0.57, 0.72,
+  0.54, 0.66, 0.59, 0.78, 0.62, 0.83, 0.68, 0.75,
 ];
 
+const LARGURA = 360;
+const BASE = 150;
+const ALTURA_MAX = 84;
+
 export function PanelMock() {
+  const vao = 2.5;
+  const largura = (LARGURA - 32 - vao * (MESES.length - 1)) / MESES.length;
+  const ultimo = MESES.length - 1;
+
   return (
     <svg
-      viewBox="0 0 320 200"
+      viewBox={`0 0 ${LARGURA} 176`}
       role="img"
-      aria-label="Ilustração do painel: gasto por mês em barras e a evolução de preço de uma assinatura"
+      aria-label="Ilustração do painel: total do período, gasto mês a mês em barras e um reajuste de assinatura apontado no último mês"
       className="w-full"
     >
-      {/* Cartão de trás, como o do app */}
-      <rect x="0" y="0" width="320" height="200" rx="12" fill="var(--card)" />
-      <rect
-        x="0.5"
-        y="0.5"
-        width="319"
-        height="199"
-        rx="12"
-        fill="none"
-        stroke="var(--border)"
-      />
+      {/* Rótulo e total — o corpo grande é o que faz a série parecer longa */}
+      <text x="16" y="26" fontSize="9" letterSpacing="1" fill="var(--muted-foreground)">
+        DOIS ANOS DE FATURA, LIDOS
+      </text>
+      <text
+        x="16"
+        y="60"
+        fontSize="30"
+        fontWeight="640"
+        letterSpacing="-1"
+        fill="var(--foreground)"
+        className="tabular"
+      >
+        R$ 74.320
+        <tspan fill="var(--muted-foreground)" opacity="0.5">
+          ,18
+        </tspan>
+      </text>
 
-      {/* Título e valor do topo */}
-      <rect x="16" y="16" width="64" height="6" rx="3" fill="var(--muted-foreground)" opacity="0.5" />
-      <rect x="16" y="30" width="96" height="12" rx="4" fill="var(--foreground)" opacity="0.85" />
-
-      {/* Barras: gasto por mês */}
+      {/* A série: os meses mais recentes vêm mais opacos, como na Visão geral */}
       {MESES.map((altura, i) => {
-        const largura = 18;
-        const vao = 6;
+        const h = Math.round(altura * ALTURA_MAX);
         const x = 16 + i * (largura + vao);
-        const alturaMax = 78;
-        const h = Math.round(altura * alturaMax);
+        // Do mais apagado ao cheio: dá direção de leitura ao tempo, da esquerda
+        // para a direita, sem precisar de eixo.
+        const opacidade = i === ultimo ? 1 : 0.3 + (i / ultimo) * 0.45;
         return (
           <rect
             key={i}
             x={x}
-            y={140 - h}
+            y={BASE - h}
             width={largura}
             height={h}
-            rx="3"
+            rx="1.5"
             fill="var(--chart-1)"
-            // O último mês mais claro: é o que a Visão geral destaca como a
-            // fatura mais recente.
-            opacity={i === MESES.length - 1 ? 1 : 0.55}
+            opacity={opacidade}
           />
         );
       })}
+      <line x1="16" y1={BASE + 1} x2={LARGURA - 16} y2={BASE + 1} stroke="var(--chart-grid)" />
 
-      {/* Linha de base das barras */}
-      <line x1="16" y1="141" x2="304" y2="141" stroke="var(--chart-grid)" />
+      {/* O reajuste da assinatura, apontado sobre o mês em que apareceu */}
+      <g>
+        <circle cx={LARGURA - 16 - largura / 2} cy={BASE - Math.round(0.75 * ALTURA_MAX) - 8} r="3" fill="var(--cat-3)" />
+        <text
+          x={LARGURA - 22}
+          y={BASE - Math.round(0.75 * ALTURA_MAX) - 16}
+          fontSize="9.5"
+          textAnchor="end"
+          fill="var(--cat-3)"
+        >
+          assinatura +28%
+        </text>
+      </g>
 
-      {/* Rodapé: a escada de preço de uma assinatura */}
-      <rect x="16" y="154" width="140" height="6" rx="3" fill="var(--muted-foreground)" opacity="0.4" />
-      <g transform="translate(152, 150)">
-        {DEGRAUS.map((degrau, i) => (
-          <line
-            key={i}
-            x1={degrau.x}
-            y1={degrau.y}
-            x2={degrau.x + degrau.largura}
-            y2={degrau.y}
-            stroke="var(--cat-3)"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          />
-        ))}
-        {/* O degrau em si: o reajuste que o app aponta */}
-        <line x1="88" y1="30" x2="88" y2="18" stroke="var(--cat-3)" strokeWidth="2.5" />
-        <circle cx="88" cy="18" r="3.5" fill="var(--cat-3)" />
+      {/* Rodapé do cartão: as categorias do mês, como fatias */}
+      <g transform={`translate(16, ${BASE + 14})`}>
+        {[
+          { largura: 104, cor: 'var(--cat-1)' },
+          { largura: 78, cor: 'var(--cat-2)' },
+          { largura: 56, cor: 'var(--cat-3)' },
+          { largura: 40, cor: 'var(--cat-5)' },
+          { largura: 50, cor: 'var(--cat-rest)' },
+        ].reduce<{ nodes: React.ReactNode[]; x: number }>(
+          (acc, fatia, i) => {
+            acc.nodes.push(
+              <rect
+                key={i}
+                x={acc.x}
+                y="0"
+                width={fatia.largura - 3}
+                height="6"
+                rx="3"
+                fill={fatia.cor}
+                opacity="0.85"
+              />,
+            );
+            acc.x += fatia.largura;
+            return acc;
+          },
+          { nodes: [], x: 0 },
+        ).nodes}
       </g>
     </svg>
   );
