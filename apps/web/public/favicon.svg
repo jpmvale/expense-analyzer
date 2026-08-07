@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- Favicon do expense/analyzer: a série de gasto reduzida ao essencial, no
+       verde da marca (#34d399, o token primary).
+
+       Barras, e não a carteira do wordmark: em 16px, o tamanho real de uma aba
+       do navegador, a carteira vira um borrão de contornos, e três barras
+       ascendentes continuam legíveis e dizem do que o app trata. Sem filtro,
+       sem gradiente: qualquer desfoque some ou suja nesse tamanho.
+
+       Atenção ao escrever comentário aqui: dois hifens seguidos são proibidos
+       dentro de comentário XML, e o parser rejeita o arquivo INTEIRO. Citar um
+       token CSS pelo nome com os dois hifens à frente deixa a aba sem ícone e
+       não gera erro em lugar nenhum. -->
+  <circle cx="16" cy="16" r="16" fill="#34d399"/>
+  <g fill="#04231a">
+    <rect x="8"  y="17" width="4.5" height="8"  rx="1.4"/>
+    <rect x="14" y="12" width="4.5" height="13" rx="1.4"/>
+    <rect x="20" y="7"  width="4.5" height="18" rx="1.4"/>
+  </g>
+</svg>
