@@ -1,5 +1,7 @@
 # Expense Analyzer
 
+**Em produção:** <https://expenses.imp-software.cloud>
+
 Dashboard pessoal pra analisar o histórico de gastos do cartão de crédito. As faturas em **CSV**
 viram um banco de compras no **MongoDB**, uma **API NestJS** agrega isso por mês e por categoria, e
 um **front em React** mostra tabelas e gráficos: quanto você gastou, com o quê, e como isso evolui
